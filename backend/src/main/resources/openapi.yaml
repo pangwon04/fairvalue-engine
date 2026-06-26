@@ -1,0 +1,1147 @@
+# =============================================================================
+# FairValue Engine — Backend REST API 계약 (W9)
+# -----------------------------------------------------------------------------
+# 이 파일은 "API 계약 문서"이며 구현이 아니다. backend/frontend 가 동일 인터페이스를
+# 보고 병렬 구현하기 위한 단일 소스. Contract Test 의 기준 문서로 사용한다.
+#
+# 설계 원칙(고정):
+#   1) 요청은 trigger 방식. 평가 실행 요청에 rawForm 전체를 싣지 않는다.
+#      - 계약조건은 PUT /instruments/{id}/terms 로 먼저 저장(본문 = rawForm draft).
+#      - 평가 실행은 POST /instruments/{id}/price 로 model/seed/options/params_override 만 받는다.
+#      - 서버 Normalizer 가 저장된 rawForm 을 resolve(커브 ref→포인트, asset→spot/vol)해서
+#        ValuationContext 를 내부 조립한다. ValuationContext 는 외부 입력 스키마로 노출하지 않는다.
+#   2) 응답·중간 스키마는 shared/schemas 를 단일 출처로 삼는다.
+#      - PricingResult 는 shared/schemas/pricing-result.schema.json 의 1:1 미러(출처 주석 명시).
+#      - TermsDraft 검증은 shared/schemas/valuation-context.draft.schema.json 개념을 따른다.
+#   3) enum(InstrumentType·ModelName·ExerciseStyle·JobStatus·Role)은
+#      shared/schemas/instrument-types.ts 값과 1:1. 새 값 추가 금지(TRINOMIAL 없음).
+#   4) 모든 응답은 조직 격리(organization_id) 전제. JWT 클레임의 org 로 자동 필터된다.
+#
+# 권한(RBAC) 표기: 각 operation 의 x-roles 에 허용 역할을 명시.
+#   ORG_ADMIN > CURVE_MANAGER / VALUATOR / AUDITOR / VIEWER.
+#   "VALUATOR+" = VALUATOR 이상(ORG_ADMIN 포함). "all" = 인증된 모든 역할.
+#
+# 유효성 검사(lint) 방법:
+#   - npx @redocly/cli@latest lint backend/src/main/resources/openapi.yaml
+#   - 또는: npx swagger-cli validate backend/src/main/resources/openapi.yaml
+#   - 또는(py): python -c "import yaml,openapi_spec_validator as v; \
+#       v.validate_spec(yaml.safe_load(open('backend/src/main/resources/openapi.yaml')))"
+# =============================================================================
+openapi: 3.1.0
+info:
+  title: FairValue Engine API
+  version: 0.1.0
+  description: >-
+    복합금융상품·파생상품 공정가치 평가 플랫폼의 백엔드 REST API 계약(v0.1).
+    7개 상품(RCPS·CPS·CB·EB·BW·SO·CSO)을 동일 인터페이스로 다룬다.
+    모든 응답은 호출자의 조직(organization_id)으로 격리된다.
+
+servers:
+  - url: /api/v1
+    description: 기본 API 베이스 경로
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: 인증(가입·로그인)
+  - name: Org/User
+    description: 조직·사용자·역할 관리
+  - name: Project
+    description: 평가 묶음(프로젝트)
+  - name: Instrument
+    description: 평가 대상 상품
+  - name: Terms
+    description: 계약·권리조건 저장(rawForm draft)
+  - name: Curve
+    description: 수익률 커브 업로드·조회·부트스트랩
+  - name: Asset
+    description: 기초자산 검색·변동성
+  - name: Pricing
+    description: 평가 Job 실행·상태·결과
+  - name: Analysis
+    description: 민감도·시나리오
+  - name: Report
+    description: 산출물(Excel·PDF·Audit Pack)
+  - name: Admin
+    description: 관리자(권한 승인·모델 버전)
+
+paths:
+
+  # ----------------------------------------------------------------- Auth
+  /auth/signup:
+    post:
+      tags: [Auth]
+      summary: 회원 가입
+      operationId: signup
+      security: []   # public
+      x-roles: [public]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+      responses:
+        '201':
+          description: 가입 성공
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 로그인
+      operationId: login
+      security: []   # public
+      x-roles: [public]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: 로그인 성공(JWT 발급)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ------------------------------------------------------------- Org/User
+  /admin/users:
+    get:
+      tags: [Org/User]
+      summary: 사용자 목록(조직 내)
+      operationId: listUsers
+      x-roles: [ORG_ADMIN]
+      responses:
+        '200':
+          description: 조직 사용자 목록(조직 격리)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{id}:
+    patch:
+      tags: [Org/User]
+      summary: 사용자 역할 변경
+      operationId: updateUserRole
+      x-roles: [ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/Role' }
+      responses:
+        '200':
+          description: 변경된 사용자
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # -------------------------------------------------------------- Project
+  /projects:
+    post:
+      tags: [Project]
+      summary: 평가 묶음 생성
+      operationId: createProject
+      x-roles: [VALUATOR, ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '201':
+          description: 생성된 프로젝트
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+    get:
+      tags: [Project]
+      summary: 프로젝트 목록(조직 격리)
+      operationId: listProjects
+      x-roles: [VALUATOR, AUDITOR, VIEWER, CURVE_MANAGER, ORG_ADMIN]
+      responses:
+        '200':
+          description: 프로젝트 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ----------------------------------------------------------- Instrument
+  /instruments:
+    post:
+      tags: [Instrument]
+      summary: 상품 생성
+      operationId: createInstrument
+      x-roles: [VALUATOR, ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, name, issuer]
+              properties:
+                type: { $ref: '#/components/schemas/InstrumentType' }
+                name: { type: string }
+                issuer: { type: string }
+                project_id: { type: integer }
+      responses:
+        '201':
+          description: 생성된 상품
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instrument' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+    get:
+      tags: [Instrument]
+      summary: 상품 목록(조직 격리)
+      operationId: listInstruments
+      x-roles: [all]
+      parameters:
+        - in: query
+          name: type
+          schema: { $ref: '#/components/schemas/InstrumentType' }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/InstrumentStatus' }
+      responses:
+        '200':
+          description: 상품 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Instrument' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /instruments/{id}:
+    get:
+      tags: [Instrument]
+      summary: 상품 단건 조회
+      operationId: getInstrument
+      x-roles: [all]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: 상품 상세
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instrument' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Terms
+  /instruments/{id}/terms:
+    put:
+      tags: [Terms]
+      summary: 계약·권리조건 저장(rawForm draft)
+      description: >-
+        본문은 rawForm draft 이다(폼의 bind 경로 기준). 커브는 *_ref(upload_id 참조)로 받는다.
+        서버는 valuation-context.draft.schema.json 개념으로 검증하며, 평가 시점에
+        Normalizer 가 resolve 한다. 이 단계에서는 ValuationContext 를 조립하지 않는다.
+      operationId: saveInstrumentTerms
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TermsDraft' }
+      responses:
+        '200':
+          description: 저장 결과 + 폼 검증 이슈 목록(경고 포함)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TermsSaveResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  # ---------------------------------------------------------------- Curve
+  /curves:
+    post:
+      tags: [Curve]
+      summary: 커브 업로드(multipart)
+      operationId: uploadCurve
+      x-roles: [CURVE_MANAGER, ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [as_of, kind, file]
+              properties:
+                as_of: { type: string, format: date }
+                kind: { $ref: '#/components/schemas/CurveKind' }
+                grade: { type: string, description: '신용등급(예: BB, B-). RISK_FREE 면 생략 가능.' }
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: 업로드 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurveUploadResult' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+    get:
+      tags: [Curve]
+      summary: 커브 조회(포인트 + 출처)
+      operationId: getCurve
+      x-roles: [all]
+      parameters:
+        - { in: query, name: as_of, schema: { type: string, format: date } }
+        - { in: query, name: grade, schema: { type: string } }
+        - { in: query, name: kind, schema: { $ref: '#/components/schemas/CurveKind' } }
+      responses:
+        '200':
+          description: 커브 포인트 + 출처
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [points, source]
+                properties:
+                  points:
+                    type: array
+                    items: { $ref: '#/components/schemas/CurvePoint' }
+                  source: { type: string, description: '예: uploaded:2024-06-26/B-/v1' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /curves/bootstrap:
+    post:
+      tags: [Curve]
+      summary: 부트스트랩(par → zero/df/forward)
+      operationId: bootstrapCurve
+      x-roles: [CURVE_MANAGER, ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [par_rates, interp]
+              properties:
+                par_rates:
+                  type: array
+                  items: { $ref: '#/components/schemas/CurvePoint' }
+                interp: { $ref: '#/components/schemas/InterpolationMethod' }
+      responses:
+        '200':
+          description: zero/df/forward 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BootstrapResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /curves/permission-request:
+    post:
+      tags: [Curve]
+      summary: 커브 업로드 권한 요청
+      operationId: requestCurvePermission
+      x-roles: [VALUATOR, ORG_ADMIN]
+      responses:
+        '201':
+          description: 권한 요청 접수
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request_id]
+                properties:
+                  request_id: { type: integer }
+
+  # ---------------------------------------------------------------- Asset
+  /assets:
+    get:
+      tags: [Asset]
+      summary: 기초자산 검색
+      operationId: searchAssets
+      x-roles: [all]
+      parameters:
+        - { in: query, name: listed, schema: { type: boolean } }
+        - { in: query, name: q, schema: { type: string } }
+      responses:
+        '200':
+          description: 기초자산 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assets]
+                properties:
+                  assets:
+                    type: array
+                    items: { $ref: '#/components/schemas/Asset' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /assets/{id}/volatility:
+    post:
+      tags: [Asset]
+      summary: 변동성 산출(비상장 peer 기반 등)
+      operationId: computeAssetVolatility
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [as_of, method]
+              properties:
+                as_of: { type: string, format: date }
+                method: { type: string, enum: [historical, peer_median, manual] }
+                peers:
+                  type: array
+                  items: { type: integer, description: 'peer asset_id' }
+      responses:
+        '200':
+          description: 산출된 변동성 + 출처
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VolatilityResult' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  # -------------------------------------------------------------- Pricing
+  /instruments/{id}/price:
+    post:
+      tags: [Pricing]
+      summary: 평가 실행(trigger)
+      description: >-
+        trigger 방식. 본문에 rawForm 전체를 싣지 않는다. 서버가 저장된 terms(rawForm)를
+        Normalizer 로 resolve 해 ValuationContext 를 내부 조립하고 input_hash 로 캐시를 판정한다.
+        동일 input_hash 가 있으면 cached=true 로 기존 결과를 재사용한다.
+      operationId: triggerPricing
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PricingTrigger' }
+      responses:
+        '201':
+          description: Job 생성(또는 캐시 적중)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status, cached]
+                properties:
+                  job_id: { type: integer }
+                  status: { $ref: '#/components/schemas/JobStatus' }
+                  cached: { type: boolean }
+        '409':
+          description: 입력 미완료/검증 실패로 실행 불가
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /jobs/{job_id}:
+    get:
+      tags: [Pricing]
+      summary: Job 상태 조회
+      operationId: getJob
+      x-roles: [all]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      responses:
+        '200':
+          description: Job 상태
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{job_id}/result:
+    get:
+      tags: [Pricing]
+      summary: 평가 결과(PricingResult)
+      description: '응답은 shared/schemas/pricing-result.schema.json 의 PricingResult 와 1:1.'
+      operationId: getJobResult
+      x-roles: [all]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      responses:
+        '200':
+          description: PricingResult
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PricingResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 아직 계산 미완료(status != DONE)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /jobs/{job_id}/audit-data:
+    get:
+      tags: [Pricing]
+      summary: 계산검증 데이터(시뮬레이션 요약)
+      operationId: getJobAuditData
+      x-roles: [AUDITOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      responses:
+        '200':
+          description: 감사용 계산근거 데이터
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditData' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{job_id}/snapshot:
+    post:
+      tags: [Pricing]
+      summary: 결과 스냅샷 저장
+      operationId: snapshotJob
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label: { type: string }
+      responses:
+        '201':
+          description: 스냅샷 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [snapshot_id, link]
+                properties:
+                  snapshot_id: { type: integer }
+                  link: { type: string, format: uri }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------- Analysis
+  /jobs/{job_id}/sensitivity:
+    post:
+      tags: [Analysis]
+      summary: 민감도 분석(토네이도)
+      operationId: runSensitivity
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variables, shocks]
+              properties:
+                variables: { type: array, items: { type: string } }
+                shocks: { type: array, items: { type: number } }
+      responses:
+        '200':
+          description: 민감도 그리드 + 토네이도
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SensitivityResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{job_id}/scenarios:
+    post:
+      tags: [Analysis]
+      summary: 시나리오 비교
+      operationId: runScenarios
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scenarios]
+              properties:
+                scenarios:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      overrides: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: 시나리오 비교 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScenarioResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # --------------------------------------------------------------- Report
+  /jobs/{job_id}/export.xlsx:
+    post:
+      tags: [Report]
+      summary: Excel 산출물 생성
+      operationId: exportXlsx
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sheets: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: 다운로드 URL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileUrl' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{job_id}/report.pdf:
+    post:
+      tags: [Report]
+      summary: PDF 평가보고서 생성
+      operationId: exportReportPdf
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sections: { type: array, items: { type: string } }
+                notes: { type: string }
+      responses:
+        '200':
+          description: 다운로드 URL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileUrl' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{job_id}/audit-pack:
+    post:
+      tags: [Report]
+      summary: 감사 패키지(zip) 생성
+      operationId: exportAuditPack
+      x-roles: [AUDITOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      responses:
+        '200':
+          description: 다운로드 URL(zip)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileUrl' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Admin
+  /admin/curve-permissions:
+    get:
+      tags: [Admin]
+      summary: 커브 업로드 권한 승인 큐
+      operationId: listCurvePermissions
+      x-roles: [ORG_ADMIN]
+      responses:
+        '200':
+          description: 권한 요청 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items: { $ref: '#/components/schemas/CurvePermissionRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/model-versions:
+    get:
+      tags: [Admin]
+      summary: 모델 버전 목록
+      operationId: listModelVersions
+      x-roles: [ORG_ADMIN]
+      responses:
+        '200':
+          description: 모델 버전 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/ModelVersion' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+# =============================================================================
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Authorization: Bearer <JWT>. 클레임의 organization_id 로 조직 격리.'
+
+  parameters:
+    PathId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer }
+    PathJobId:
+      in: path
+      name: job_id
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: 인증 실패
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: 권한 없음(역할/조직 격리)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: 리소스 없음(조직 격리 포함)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: 충돌(중복/상태 불일치)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnprocessableEntity:
+      description: 검증 실패(필드 오류 포함)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    # ---- 공통 에러/이슈 ----
+    Error:
+      type: object
+      description: 공통 에러 본문.
+      required: [code, message]
+      properties:
+        code: { type: string, description: '예: E001, E422 등' }
+        message: { type: string }
+        fields:
+          type: array
+          description: 필드별 검증 오류.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    # 출처: shared/schemas/pricing-result.schema.json#/$defs/issue
+    Issue:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        field: { type: [string, 'null'] }
+        stage: { type: [string, 'null'] }
+
+    # ---- enum (출처: shared/schemas/instrument-types.ts) ----
+    InstrumentType:
+      type: string
+      enum: [RCPS, CPS, CB, EB, BW, SO, CSO]
+    ModelName:
+      type: string
+      description: 'TRINOMIAL 없음(미사용).'
+      enum: [TF_LATTICE, LATTICE, MONTE_CARLO, LSMC, BSM, DCF]
+    ExerciseStyle:
+      type: string
+      enum: [AMERICAN, EUROPEAN, BERMUDAN]
+    CurveKind:
+      type: string
+      enum: [RISK_FREE, CREDIT]
+    JobStatus:
+      type: string
+      enum: [QUEUED, RUNNING, DONE, FAILED, PARTIAL]
+    Role:
+      type: string
+      enum: [ORG_ADMIN, CURVE_MANAGER, VALUATOR, AUDITOR, VIEWER]
+    InstrumentStatus:
+      type: string
+      enum: [DRAFT, TERMS_SAVED, PRICED, ARCHIVED]
+    InterpolationMethod:
+      type: string
+      enum: [linear, log_linear, monotone_convex]
+
+    # ---- Auth/User ----
+    SignupRequest:
+      type: object
+      required: [email, pw, org_code]
+      properties:
+        email: { type: string, format: email }
+        pw: { type: string, format: password }
+        org_code: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, pw]
+      properties:
+        email: { type: string, format: email }
+        pw: { type: string, format: password }
+    AuthResult:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string, description: 'JWT' }
+        user: { $ref: '#/components/schemas/User' }
+    User:
+      type: object
+      required: [id, email, role, organization_id]
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/Role' }
+        organization_id: { type: integer }
+
+    # ---- Project/Instrument ----
+    Project:
+      type: object
+      required: [id, name, organization_id]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        organization_id: { type: integer }
+        created_at: { type: string, format: date-time }
+    Instrument:
+      type: object
+      required: [id, type, name, issuer, status, organization_id]
+      properties:
+        id: { type: integer }
+        type: { $ref: '#/components/schemas/InstrumentType' }
+        name: { type: string }
+        issuer: { type: string }
+        status: { $ref: '#/components/schemas/InstrumentStatus' }
+        project_id: { type: [integer, 'null'] }
+        organization_id: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    # ---- TermsDraft (rawForm draft) ----
+    # 출처(개념): shared/schemas/valuation-context.draft.schema.json
+    # 폼 bind 경로 기준. 커브는 *_ref(upload_id). asset 은 market.asset_id.
+    # 평가 시 Normalizer 가 resolve 하므로 여기서는 ref 만 받는다.
+    TermsDraft:
+      type: object
+      description: rawForm draft. 폼 bind 경로 그대로의 입력. 커브는 ref(미해결).
+      properties:
+        terms: { type: object, additionalProperties: true }
+        rights: { type: object, additionalProperties: true }
+        market:
+          type: object
+          additionalProperties: true
+          properties:
+            asset_id: { type: [integer, 'null'] }
+        curves:
+          type: object
+          description: 입력 단계는 ref 만. 포인트 배열은 final 단계에서 Normalizer 가 채운다.
+          properties:
+            risk_free_ref: { type: [integer, string, 'null'] }
+            credit_ref: { type: [integer, string, 'null'] }
+        model: { $ref: '#/components/schemas/ModelName' }
+        seed: { type: integer }
+        options: { $ref: '#/components/schemas/EngineOptions' }
+    TermsSaveResponse:
+      type: object
+      required: [saved, validation]
+      properties:
+        saved: { type: boolean }
+        validation:
+          type: array
+          description: 폼 검증 이슈(경고 포함). 빈 배열 기본.
+          items: { $ref: '#/components/schemas/Issue' }
+
+    # ---- Pricing trigger (rawForm 전체 미포함) ----
+    EngineOptions:
+      type: object
+      properties:
+        lattice_steps: { type: integer }
+        simulation_paths: { type: integer }
+        variance_reduction: { type: string, enum: [none, antithetic, sobol] }
+    PricingTrigger:
+      type: object
+      description: >-
+        평가 실행 trigger. rawForm 전체를 싣지 않는다. 저장된 terms 를 서버가 resolve 한다.
+        params_override 는 저장값을 일시 덮어쓰는 제한적 override 용(예: 시드/패스수/단일 파라미터).
+      properties:
+        model: { $ref: '#/components/schemas/ModelName' }
+        seed: { type: integer }
+        options: { $ref: '#/components/schemas/EngineOptions' }
+        params_override:
+          type: object
+          additionalProperties: true
+          description: 제한적 override(저장 rawForm 의 일부 수치만). 전체 rawForm 대체 아님.
+
+    Job:
+      type: object
+      required: [job_id, instrument_id, status]
+      properties:
+        job_id: { type: integer }
+        instrument_id: { type: integer }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        progress: { type: [number, 'null'], description: '0~1' }
+        cached: { type: boolean }
+
+    # ---- Curve/Asset ----
+    CurvePoint:
+      type: array
+      description: '[tenor_year, rate_pct]'
+      prefixItems:
+        - { type: number }
+        - { type: number }
+      minItems: 2
+      maxItems: 2
+    CurveUploadResult:
+      type: object
+      required: [upload_id]
+      properties:
+        upload_id: { type: integer }
+        validation:
+          type: array
+          items: { $ref: '#/components/schemas/Issue' }
+    BootstrapResult:
+      type: object
+      required: [zero, df, forward]
+      properties:
+        zero: { type: array, items: { $ref: '#/components/schemas/CurvePoint' } }
+        df: { type: array, items: { $ref: '#/components/schemas/CurvePoint' } }
+        forward: { type: array, items: { $ref: '#/components/schemas/CurvePoint' } }
+    Asset:
+      type: object
+      required: [id, name, listed]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        ticker: { type: [string, 'null'] }
+        listed: { type: boolean }
+    VolatilityResult:
+      type: object
+      required: [vol, source]
+      properties:
+        vol: { type: number, description: '연 %' }
+        source: { type: string }
+
+    # ---- Analysis ----
+    SensitivityResult:
+      type: object
+      properties:
+        grid:
+          type: array
+          items: { type: object, additionalProperties: true }
+        tornado:
+          type: array
+          items:
+            type: object
+            properties:
+              variable: { type: string }
+              down: { type: number }
+              up: { type: number }
+    ScenarioResult:
+      type: object
+      properties:
+        comparison:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              total_fair_value: { type: number }
+
+    # ---- Report ----
+    FileUrl:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri }
+
+    # ---- Admin ----
+    CurvePermissionRequest:
+      type: object
+      required: [request_id]
+      properties:
+        request_id: { type: integer }
+        requested_by: { type: integer }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+        created_at: { type: string, format: date-time }
+    ModelVersion:
+      type: object
+      required: [model, version]
+      properties:
+        model: { $ref: '#/components/schemas/ModelName' }
+        version: { type: string, description: '예: cb-1.0.0' }
+        instrument_type: { $ref: '#/components/schemas/InstrumentType' }
+
+    # =========================================================================
+    # PricingResult — 출처: shared/schemas/pricing-result.schema.json (1:1 미러)
+    #   components 부호포함 합 == total_fair_value(§4.10).
+    #   표준 component key 12종만. warnings/errors required + 기본 [](패치 2.4).
+    # =========================================================================
+    PricingResult:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - instrument_id
+        - instrument_type
+        - valuation_date
+        - status
+        - total_fair_value
+        - components
+        - key_parameters
+        - reproducibility
+        - warnings
+        - errors
+      properties:
+        job_id: { type: integer }
+        instrument_id: { type: integer }
+        instrument_type: { $ref: '#/components/schemas/InstrumentType' }
+        valuation_date: { type: string, format: date }
+        status: { type: string, enum: [DONE, FAILED, PARTIAL] }
+        total_fair_value: { type: [number, 'null'] }
+        per_unit_value: { type: [number, 'null'] }
+        components: { $ref: '#/components/schemas/Components' }
+        key_parameters: { $ref: '#/components/schemas/KeyParameters' }
+        sensitivity_summary: { type: [object, 'null'] }
+        scenario_summary: { type: [object, 'null'] }
+        audit_data: { $ref: '#/components/schemas/AuditData' }
+        reproducibility: { $ref: '#/components/schemas/Reproducibility' }
+        warnings:
+          type: array
+          default: []
+          items: { $ref: '#/components/schemas/Issue' }
+        errors:
+          type: array
+          default: []
+          items: { $ref: '#/components/schemas/Issue' }
+
+    # 표준 12종 key 만 허용. total_fair_value 는 나머지 부호포함 합의 echo.
+    Components:
+      type: object
+      additionalProperties: false
+      properties:
+        bond_value: { type: [number, 'null'], description: '채권(host), 부호 +' }
+        preferred_share_value: { type: [number, 'null'], description: '우선주(host), 부호 +' }
+        conversion_option_value: { type: [number, 'null'], description: '전환옵션, 부호 +' }
+        exchange_option_value: { type: [number, 'null'], description: '교환옵션, 부호 +' }
+        warrant_value: { type: [number, 'null'], description: '신주인수권, 부호 +' }
+        redemption_option_value: { type: [number, 'null'], description: '상환권(풋), 부호 +' }
+        issuer_call_value: { type: [number, 'null'], description: '발행자 콜, 부호 −' }
+        sale_claim_value: { type: [number, 'null'], description: '매도청구권, 부호 −' }
+        stock_option_value: { type: [number, 'null'], description: '주식매수선택권, 부호 +' }
+        conditional_option_value: { type: [number, 'null'], description: '조건부 SO, 부호 +' }
+        dilution_effect: { type: [number, 'null'], description: '희석효과, 부호 −' }
+        total_fair_value: { type: [number, 'null'], description: '= 나머지 부호포함 합의 echo' }
+
+    KeyParameters:
+      type: object
+      additionalProperties: false
+      required: [model_name, model_version]
+      properties:
+        risk_free_rate: { type: [number, 'null'] }
+        ytm: { type: [number, 'null'] }
+        credit_spread: { type: [number, 'null'] }
+        volatility: { type: [number, 'null'] }
+        dividend_yield: { type: [number, 'null'] }
+        parity: { type: [number, 'null'], description: '엔진 산출. 입력 아님(패치 2.1).' }
+        discount_rate: { type: [number, 'null'] }
+        model_name: { type: string }
+        model_version: { type: string }
+        simulation_paths: { type: [integer, 'null'] }
+        lattice_steps: { type: [integer, 'null'] }
+
+    Reproducibility:
+      type: object
+      required: [input_hash, seed, model_version]
+      properties:
+        input_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        seed: { type: integer }
+        model_version: { type: string }
+        engine_commit: { type: [string, 'null'] }
+        computed_at: { type: string, format: date-time }
+
+    # audit-data 응답 + PricingResult.audit_data 공용.
+    AuditData:
+      type: [object, 'null']
+      properties:
+        cashflow_schedule: { type: array, items: { type: object, additionalProperties: true } }
+        discount_factors: { type: array, items: { type: object, additionalProperties: true } }
+        curve_snapshot: { type: object, additionalProperties: true }
+        node_summary: { type: object, additionalProperties: true }
+        path_summary: { type: object, additionalProperties: true }
+        exercise_log: { type: array, items: { type: object, additionalProperties: true } }
+        calculation_trace: { type: array, items: { type: object, additionalProperties: true } }
+        input_snapshot_hash: { type: string }
