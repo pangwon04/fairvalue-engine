@@ -1,0 +1,113 @@
+{
+  "_meta": {
+    "note": "샘플 defaultValue 는 '구조 시연용 샘플'이며 실제 시장값이 아님. 실데이터 확보 후 defaultValue 만 교체하면 구조는 그대로 유지된다.",
+    "contract": "shared/schemas/form-schema.ts (v0.1)",
+    "rights_exposed": ["vesting(필수)"],
+    "rights_excluded": ["conversion", "exchange", "warrant", "refixing", "redemption", "issuer_call", "sale_claim", "dilution"],
+    "note_curve": "주식보상형은 risk_free 커브만 사용. credit_curve selector 미노출.",
+    "note_maturity": "host(채권/우선주) 없음. 명시 만기 대신 expected_term 사용 — maturity_date 는 enableWhen 으로 비활성."
+  },
+  "product": "SO",
+  "version": "0.1.0",
+  "title": "주식매수선택권(Stock Option) 평가",
+  "steps": [
+    {
+      "id": "instrument_basics",
+      "title": "기본정보",
+      "fields": [
+        { "key": "issuer", "label": "발행사(부여회사)", "type": "text", "required": true, "bind": "metadata.issuer" },
+        { "key": "name", "label": "부여 건명", "type": "text", "required": true, "bind": "metadata.instrument_name" },
+        { "key": "valuation_date", "label": "평가기준일", "type": "date", "required": true, "bind": "valuation_date",
+          "validations": [{ "rule": "required", "message": "평가기준일은 필수입니다.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "terms",
+      "title": "부여조건",
+      "fields": [
+        { "key": "grant_date", "label": "부여일", "type": "date", "required": true, "bind": "terms.grant_date" },
+        { "key": "grant_quantity", "label": "부여수량", "type": "number", "unit": "주", "required": true, "bind": "terms.grant_quantity",
+          "defaultValue": 100000,
+          "validations": [{ "rule": "positive", "message": "부여수량은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "exercise_price", "label": "행사가격", "type": "currency", "unit": "원", "required": true, "bind": "terms.exercise_price",
+          "defaultValue": 15000,
+          "validations": [{ "rule": "pricePositive", "message": "행사가격은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "expected_term", "label": "기대만기(년)", "type": "number", "unit": "년", "required": true, "bind": "terms.expected_term",
+          "defaultValue": 4,
+          "validations": [{ "rule": "positive", "message": "기대만기는 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "maturity_date", "label": "명시 만기일(비활성)", "type": "date", "bind": "terms.maturity_date",
+          "enableWhen": { "field": "use_explicit_maturity", "op": "truthy" },
+          "help": "주식보상형은 기대만기(expected_term)를 사용한다. 명시 만기는 비활성." }
+      ]
+    },
+    {
+      "id": "underlying",
+      "title": "기초자산",
+      "fields": [
+        { "key": "asset", "label": "기초자산(부여회사 보통주)", "type": "assetSearch", "required": true, "bind": "market.asset_id",
+          "resolve": { "to": "market.asset_id", "kind": "asset" },
+          "validations": [{ "rule": "assetRequired", "message": "기초자산을 선택하세요.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "parameters",
+      "title": "평가 파라미터",
+      "fields": [
+        { "key": "risk_free_curve", "label": "무위험수익률 커브", "type": "curveSelector", "required": true, "bind": "curves.risk_free_ref",
+          "resolve": { "to": "curves.risk_free_curve", "kind": "curve" },
+          "validations": [{ "rule": "curveRequired", "params": { "kind": "RISK_FREE" },
+            "message": "무위험 커브를 선택하세요.", "severity": "error" }] },
+        { "key": "volatility", "label": "주가 변동성", "type": "percentage", "unit": "%", "required": true, "bind": "market.volatility",
+          "validations": [{ "rule": "volatilityPositive", "message": "변동성은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "dividend_yield", "label": "배당수익률", "type": "percentage", "unit": "%", "defaultValue": 1, "bind": "market.dividend_yield" },
+        { "key": "spot", "label": "기준일 주가", "type": "currency", "unit": "원", "required": true, "bind": "market.spot",
+          "validations": [{ "rule": "pricePositive", "message": "주가는 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "shares_outstanding", "label": "기발행 주식수", "type": "number", "unit": "주", "bind": "market.shares_outstanding",
+          "defaultValue": 8000000 }
+      ]
+    },
+    {
+      "id": "rights.vesting",
+      "title": "가득조건",
+      "fields": [
+        { "key": "vesting_schedule", "label": "가득 스케줄", "type": "table", "required": true, "bind": "rights.vesting.schedule",
+          "help": "정액 가득(4년)을 구간으로 표현. 각 행: 가득일 + 가득비율.",
+          "columns": [
+            { "key": "date", "label": "가득일", "type": "date",
+              "validations": [{ "rule": "required", "message": "가득일은 필수입니다.", "severity": "error" }] },
+            { "key": "ratio", "label": "가득비율", "type": "percentage", "unit": "%",
+              "validations": [{ "rule": "percentageRange", "params": { "min": 0, "max": 100 },
+                "message": "가득비율은 0~100% 범위여야 합니다.", "severity": "error" }] }
+          ] },
+        { "key": "cliff_month", "label": "클리프(개월)", "type": "number", "unit": "개월", "bind": "rights.vesting.cliff_month",
+          "defaultValue": 12 },
+        { "key": "forfeiture_rate", "label": "기대 퇴사율", "type": "percentage", "unit": "%", "bind": "rights.vesting.forfeiture_rate",
+          "defaultValue": 5,
+          "validations": [{ "rule": "percentageRange", "params": { "min": 0, "max": 100 },
+            "message": "퇴사율은 0~100% 범위여야 합니다.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "model",
+      "title": "평가모형·실행옵션",
+      "fields": [
+        { "key": "model", "label": "평가모형", "type": "select", "required": true, "defaultValue": "BSM", "bind": "model",
+          "options": [{ "label": "Black-Scholes-Merton", "value": "BSM" },
+                      { "label": "이항격자(조기행사 반영)", "value": "LATTICE" }],
+          "validations": [{ "rule": "modelCompatibility",
+            "message": "선택 모형이 입력된 권리조건과 호환되지 않습니다.", "severity": "error" }] },
+        { "key": "lattice_steps", "label": "격자 스텝수", "type": "number", "defaultValue": 1000,
+          "showWhen": { "field": "model", "op": "in", "value": ["LATTICE"] }, "bind": "options.lattice_steps",
+          "validations": [{ "rule": "min", "params": { "min": 100 }, "message": "격자 스텝수는 100 이상이어야 합니다.", "severity": "error" }] },
+        { "key": "seed", "label": "난수 시드", "type": "number", "defaultValue": 20240101, "bind": "seed" }
+      ]
+    },
+    {
+      "id": "review",
+      "title": "검토 및 계산",
+      "fields": [
+        { "key": "summary", "label": "입력 요약", "type": "readonly", "computeFrom": ["issuer", "valuation_date", "grant_quantity", "exercise_price"] }
+      ]
+    }
+  ]
+}

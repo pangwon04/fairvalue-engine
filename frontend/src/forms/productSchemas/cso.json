@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "note": "샘플 defaultValue 는 '구조 시연용 샘플'이며 실제 시장값이 아님. 실데이터 확보 후 defaultValue 만 교체하면 구조는 그대로 유지된다.",
+    "contract": "shared/schemas/form-schema.ts (v0.1)",
+    "rights_exposed": ["vesting(필수)", "market_condition", "performance_condition"],
+    "rights_excluded": ["conversion", "exchange", "warrant", "refixing", "redemption", "issuer_call", "sale_claim", "dilution"],
+    "note_curve": "주식보상형은 risk_free 커브만 사용. credit_curve selector 미노출.",
+    "note_maturity": "host 없음. expected_term 사용 — maturity_date 는 enableWhen 으로 비활성.",
+    "note_conditions": "시장조건(target_price/barrier)=FV 내재(MC), 비시장 성과조건(probability)=수량 true-up. 폼은 조건 입력만 수집, 산식은 엔진 처리."
+  },
+  "product": "CSO",
+  "version": "0.1.0",
+  "title": "조건부 주식매수선택권(Conditional Stock Option) 평가",
+  "steps": [
+    {
+      "id": "instrument_basics",
+      "title": "기본정보",
+      "fields": [
+        { "key": "issuer", "label": "발행사(부여회사)", "type": "text", "required": true, "bind": "metadata.issuer" },
+        { "key": "name", "label": "부여 건명", "type": "text", "required": true, "bind": "metadata.instrument_name" },
+        { "key": "valuation_date", "label": "평가기준일", "type": "date", "required": true, "bind": "valuation_date",
+          "validations": [{ "rule": "required", "message": "평가기준일은 필수입니다.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "terms",
+      "title": "부여조건",
+      "fields": [
+        { "key": "grant_date", "label": "부여일", "type": "date", "required": true, "bind": "terms.grant_date" },
+        { "key": "grant_quantity", "label": "부여수량(총)", "type": "number", "unit": "주", "required": true, "bind": "terms.grant_quantity",
+          "defaultValue": 200000,
+          "validations": [{ "rule": "positive", "message": "부여수량은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "exercise_price", "label": "행사가격", "type": "currency", "unit": "원", "required": true, "bind": "terms.exercise_price",
+          "defaultValue": 15000,
+          "validations": [{ "rule": "pricePositive", "message": "행사가격은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "expected_term", "label": "기대만기(년)", "type": "number", "unit": "년", "required": true, "bind": "terms.expected_term",
+          "defaultValue": 5,
+          "validations": [{ "rule": "positive", "message": "기대만기는 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "maturity_date", "label": "명시 만기일(비활성)", "type": "date", "bind": "terms.maturity_date",
+          "enableWhen": { "field": "use_explicit_maturity", "op": "truthy" },
+          "help": "주식보상형은 기대만기(expected_term)를 사용한다. 명시 만기는 비활성." }
+      ]
+    },
+    {
+      "id": "underlying",
+      "title": "기초자산",
+      "fields": [
+        { "key": "asset", "label": "기초자산(부여회사 보통주)", "type": "assetSearch", "required": true, "bind": "market.asset_id",
+          "resolve": { "to": "market.asset_id", "kind": "asset" },
+          "validations": [{ "rule": "assetRequired", "message": "기초자산을 선택하세요.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "parameters",
+      "title": "평가 파라미터",
+      "fields": [
+        { "key": "risk_free_curve", "label": "무위험수익률 커브", "type": "curveSelector", "required": true, "bind": "curves.risk_free_ref",
+          "resolve": { "to": "curves.risk_free_curve", "kind": "curve" },
+          "validations": [{ "rule": "curveRequired", "params": { "kind": "RISK_FREE" },
+            "message": "무위험 커브를 선택하세요.", "severity": "error" }] },
+        { "key": "volatility", "label": "주가 변동성", "type": "percentage", "unit": "%", "required": true, "bind": "market.volatility",
+          "validations": [{ "rule": "volatilityPositive", "message": "변동성은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "dividend_yield", "label": "배당수익률", "type": "percentage", "unit": "%", "defaultValue": 0, "bind": "market.dividend_yield" },
+        { "key": "spot", "label": "기준일 주가", "type": "currency", "unit": "원", "required": true, "bind": "market.spot",
+          "validations": [{ "rule": "pricePositive", "message": "주가는 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "shares_outstanding", "label": "기발행 주식수", "type": "number", "unit": "주", "bind": "market.shares_outstanding",
+          "defaultValue": 10000000 }
+      ]
+    },
+    {
+      "id": "rights.vesting",
+      "title": "가득조건·트랜치",
+      "fields": [
+        { "key": "vesting_schedule", "label": "가득 스케줄", "type": "table", "required": true, "bind": "rights.vesting.schedule",
+          "columns": [
+            { "key": "date", "label": "가득일", "type": "date",
+              "validations": [{ "rule": "required", "message": "가득일은 필수입니다.", "severity": "error" }] },
+            { "key": "ratio", "label": "가득비율", "type": "percentage", "unit": "%",
+              "validations": [{ "rule": "percentageRange", "params": { "min": 0, "max": 100 },
+                "message": "가득비율은 0~100% 범위여야 합니다.", "severity": "error" }] }
+          ] },
+        { "key": "cliff_month", "label": "클리프(개월)", "type": "number", "unit": "개월", "bind": "rights.vesting.cliff_month",
+          "defaultValue": 24 },
+        { "key": "forfeiture_rate", "label": "기대 퇴사율", "type": "percentage", "unit": "%", "bind": "rights.vesting.forfeiture_rate",
+          "defaultValue": 7,
+          "validations": [{ "rule": "percentageRange", "params": { "min": 0, "max": 100 },
+            "message": "퇴사율은 0~100% 범위여야 합니다.", "severity": "error" }] },
+        { "key": "tranche", "label": "트랜치(구간별 수량·조건)", "type": "table", "bind": "rights.vesting.tranche",
+          "help": "구간(T1·T2 등)별 수량과 적용 조건을 표현.",
+          "columns": [
+            { "key": "id", "label": "트랜치 ID", "type": "text",
+              "validations": [{ "rule": "required", "message": "트랜치 ID는 필수입니다.", "severity": "error" }] },
+            { "key": "quantity", "label": "수량", "type": "number", "unit": "주",
+              "validations": [{ "rule": "positive", "message": "수량은 0보다 커야 합니다.", "severity": "error" }] },
+            { "key": "condition_type", "label": "조건유형", "type": "select",
+              "validations": [{ "rule": "enum", "params": { "values": ["market", "performance", "service"] },
+                "message": "허용되지 않은 조건유형입니다.", "severity": "error" }] }
+          ] }
+      ]
+    },
+    {
+      "id": "rights.market_condition",
+      "title": "시장조건",
+      "fields": [
+        { "key": "mc_type", "label": "시장조건 유형", "type": "select", "bind": "rights.market_condition.type",
+          "defaultValue": "target_price",
+          "options": [{ "label": "목표주가", "value": "target_price" }, { "label": "TSR", "value": "tsr" },
+                      { "label": "배리어", "value": "barrier" }] },
+        { "key": "mc_target_price", "label": "목표주가", "type": "currency", "unit": "원", "bind": "rights.market_condition.target_price",
+          "defaultValue": 30000,
+          "showWhen": { "field": "mc_type", "op": "in", "value": ["target_price", "barrier"] },
+          "validations": [{ "rule": "showWhenRequired", "message": "선택한 시장조건의 목표주가는 필수입니다.", "severity": "error" }] },
+        { "key": "mc_barrier", "label": "배리어 수준", "type": "currency", "unit": "원", "bind": "rights.market_condition.barrier",
+          "showWhen": { "field": "mc_type", "op": "eq", "value": "barrier" } }
+      ]
+    },
+    {
+      "id": "rights.performance_condition",
+      "title": "비시장 성과조건",
+      "fields": [
+        { "key": "pc_metric", "label": "성과지표", "type": "select", "bind": "rights.performance_condition.metric",
+          "defaultValue": "revenue",
+          "options": [{ "label": "매출", "value": "revenue" }, { "label": "EBITDA", "value": "ebitda" },
+                      { "label": "순이익", "value": "ni" }, { "label": "기타", "value": "custom" }] },
+        { "key": "pc_target", "label": "목표값", "type": "number", "bind": "rights.performance_condition.target",
+          "defaultValue": 100000000000,
+          "validations": [{ "rule": "positive", "message": "목표값은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "pc_probability", "label": "충족확률", "type": "percentage", "unit": "%", "bind": "rights.performance_condition.probability",
+          "defaultValue": 60,
+          "help": "비시장 성과조건의 충족확률(0~100%). 수량 true-up 가정에 사용.",
+          "validations": [{ "rule": "percentageRange", "params": { "min": 0, "max": 100 },
+            "message": "충족확률은 0~100% 범위여야 합니다.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "model",
+      "title": "평가모형·실행옵션",
+      "fields": [
+        { "key": "model", "label": "평가모형", "type": "select", "required": true, "defaultValue": "MONTE_CARLO", "bind": "model",
+          "options": [{ "label": "Monte Carlo (시장조건 내재)", "value": "MONTE_CARLO" },
+                      { "label": "LSMC (경로의존)", "value": "LSMC" }],
+          "validations": [{ "rule": "modelCompatibility",
+            "message": "선택 모형이 입력된 권리조건과 호환되지 않습니다.", "severity": "error" }] },
+        { "key": "simulation_paths", "label": "시뮬레이션 패스수", "type": "number", "required": true, "defaultValue": 200000,
+          "bind": "options.simulation_paths",
+          "validations": [{ "rule": "min", "params": { "min": 1000 }, "message": "시뮬레이션 패스수는 1000 이상이어야 합니다.", "severity": "error" }] },
+        { "key": "seed", "label": "난수 시드", "type": "number", "defaultValue": 20240101, "bind": "seed" }
+      ]
+    },
+    {
+      "id": "review",
+      "title": "검토 및 계산",
+      "fields": [
+        { "key": "summary", "label": "입력 요약", "type": "readonly", "computeFrom": ["issuer", "valuation_date", "grant_quantity", "exercise_price"] }
+      ]
+    }
+  ]
+}
