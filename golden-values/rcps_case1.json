@@ -1,0 +1,30 @@
+{
+  "fixture_id": "rcps_case1",
+  "instrument_type": "RCPS",
+  "valuation_date": "2024-06-26",
+  "expected": {
+    "total_fair_value": 24180.55,
+    "per_unit_value": 24180.55,
+    "components": {
+      "preferred_share_value": 18760.00,
+      "conversion_option_value": 4120.30,
+      "redemption_option_value": 1300.25,
+      "issuer_call_value": 0,
+      "sale_claim_value": 0,
+      "dilution_effect": 0,
+      "total_fair_value": 24180.55
+    },
+    "key_parameters": {
+      "risk_free_rate": 3.45,
+      "ytm": 10.20,
+      "credit_spread": 6.75,
+      "volatility": 50.0,
+      "parity": 22000.0,
+      "model_name": "LATTICE",
+      "model_version": "rcps-1.0.0",
+      "lattice_steps": 1000
+    }
+  },
+  "tolerance": { "absolute": 0.01, "relative": 1e-6 },
+  "invariants": ["sum_components_equals_total", "sign_rules_v1"]
+}

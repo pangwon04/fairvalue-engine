@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fairvalue.dev/schemas/valuation-context.draft.schema.json",
+  "title": "ValuationContextDraft",
+  "description": "rawForm 단계(폼 제출 검증). Frontend 폼이 생성. 커브는 *_ref(upload_id 참조) 허용, 포인트 배열도 허용. input_hash·model_version 미요구(아직 없음).",
+  "type": "object",
+  "required": ["instrument_type", "valuation_date", "terms", "rights", "market", "curves", "model", "seed"],
+  "additionalProperties": true,
+  "properties": {
+    "instrument_type": { "enum": ["RCPS", "CPS", "CB", "EB", "BW", "SO", "CSO"] },
+    "valuation_date": { "type": "string", "format": "date" },
+    "organization_id": { "type": ["integer", "null"] },
+    "instrument_id": { "type": ["integer", "null"] },
+    "terms": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "issue_date": { "type": ["string", "null"], "format": "date" },
+        "maturity_date": { "type": ["string", "null"], "format": "date" },
+        "issue_amount": { "type": ["number", "null"] },
+        "face_value": { "type": ["number", "null"] },
+        "issue_price": { "type": ["number", "null"] },
+        "coupon_rate": { "type": ["number", "null"] },
+        "coupon_freq_month": { "type": ["integer", "null"], "enum": [1, 3, 6, 12, null] },
+        "guaranteed_yield": { "type": ["number", "null"] },
+        "redemption_type": { "type": ["string", "null"], "enum": ["bullet", "amortizing", null] },
+        "interest_payment_type": { "type": ["string", "null"], "enum": ["cash", "accrued", "compound", null] },
+        "dividend_cumulative": { "type": ["boolean", "null"] },
+        "host_type": { "type": ["string", "null"], "enum": ["dated", "perpetual", null] },
+        "grant_date": { "type": ["string", "null"], "format": "date" },
+        "grant_quantity": { "type": ["number", "null"] },
+        "exercise_price": { "type": ["number", "null"] },
+        "expected_term": { "type": ["number", "null"] },
+        "tranche": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "rawForm 단계에서는 권리조건이 부분 입력일 수 있어 느슨하게 검증한다. parity 는 결과 전용이므로 rights.conversion 에 두지 않는다."
+    },
+    "market": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "asset_id": { "type": ["integer", "null"] },
+        "spot": { "type": ["number", "null"] },
+        "volatility": { "type": ["number", "null"] },
+        "dividend_yield": { "type": ["number", "null"] },
+        "shares_outstanding": { "type": ["number", "null"] },
+        "data_source": { "type": ["string", "null"] },
+        "as_of": { "type": ["string", "null"], "format": "date" }
+      }
+    },
+    "curves": {
+      "type": "object",
+      "description": "rawForm 단계: 커브 selector 가 선택한 upload_id 참조(*_ref)를 허용한다. Normalizer 가 final 에서 포인트 배열로 치환한다.",
+      "additionalProperties": true,
+      "properties": {
+        "risk_free_ref": { "type": ["integer", "string", "null"], "description": "무위험 커브 upload_id 참조" },
+        "credit_ref": { "type": ["integer", "string", "null"], "description": "신용 커브 upload_id 참조" },
+        "risk_free_curve": { "anyOf": [{ "$ref": "#/$defs/curve" }, { "type": "null" }] },
+        "credit_curve": { "anyOf": [{ "$ref": "#/$defs/curve" }, { "type": "null" }] },
+        "interpolation_method": { "enum": ["linear", "log_linear", "monotone_convex"] },
+        "curve_version": { "type": ["string", "null"] },
+        "fallback_policy": { "enum": ["nearest_grade", "manual_only", "error"] }
+      }
+    },
+    "model": { "enum": ["TF_LATTICE", "LATTICE", "MONTE_CARLO", "LSMC", "BSM", "DCF"] },
+    "seed": { "type": "integer" },
+    "model_version": { "type": ["string", "null"], "description": "draft 단계에서는 미요구" },
+    "options": { "type": "object", "additionalProperties": true },
+    "metadata": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "curve": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [{ "type": "number" }, { "type": "number" }],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "description": "[[tenor_year, rate_pct], ...]"
+    }
+  }
+}

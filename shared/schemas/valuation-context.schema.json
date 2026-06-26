@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fairvalue.dev/schemas/valuation-context.schema.json",
+  "title": "ValuationContext",
+  "description": "final ValuationContext (계산 단계). Backend Normalizer 가 생성하며 Engine 전달 직전 검증. 커브는 포인트 배열 스냅샷만 허용(*_ref 불허). parity 제외. input_hash·model_version required.",
+  "type": "object",
+  "required": [
+    "instrument_type", "valuation_date", "instrument_id", "terms",
+    "rights", "market", "curves", "model", "seed", "input_hash", "model_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "instrument_type": { "enum": ["RCPS", "CPS", "CB", "EB", "BW", "SO", "CSO"] },
+    "valuation_date": { "type": "string", "format": "date" },
+    "organization_id": { "type": "integer" },
+    "instrument_id": { "type": "integer" },
+    "terms": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "issue_date": { "type": "string", "format": "date" },
+        "maturity_date": { "type": ["string", "null"], "format": "date" },
+        "issue_amount": { "type": ["number", "null"] },
+        "face_value": { "type": ["number", "null"] },
+        "issue_price": { "type": ["number", "null"] },
+        "coupon_rate": { "type": ["number", "null"], "description": "연 %" },
+        "coupon_freq_month": { "type": ["integer", "null"], "enum": [1, 3, 6, 12, null] },
+        "guaranteed_yield": { "type": ["number", "null"], "description": "연 %" },
+        "redemption_type": { "type": ["string", "null"], "enum": ["bullet", "amortizing", null] },
+        "interest_payment_type": { "type": ["string", "null"], "enum": ["cash", "accrued", "compound", null] },
+        "dividend_cumulative": { "type": ["boolean", "null"] },
+        "host_type": { "type": ["string", "null"], "enum": ["dated", "perpetual", null] },
+        "grant_date": { "type": ["string", "null"], "format": "date" },
+        "grant_quantity": { "type": ["number", "null"] },
+        "exercise_price": { "type": ["number", "null"] },
+        "expected_term": { "type": ["number", "null"], "description": "연" },
+        "tranche": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversion": { "$ref": "#/$defs/conversion" },
+        "exchange": { "$ref": "#/$defs/exchange" },
+        "warrant": { "$ref": "#/$defs/warrant" },
+        "redemption": { "$ref": "#/$defs/redemption" },
+        "issuer_call": { "$ref": "#/$defs/issuerCall" },
+        "sale_claim": { "$ref": "#/$defs/saleClaim" },
+        "refixing": { "$ref": "#/$defs/refixing" },
+        "dilution": { "$ref": "#/$defs/dilution" },
+        "vesting": { "$ref": "#/$defs/vesting" },
+        "performance_condition": { "$ref": "#/$defs/perfCondition" },
+        "market_condition": { "$ref": "#/$defs/marketCondition" }
+      }
+    },
+    "market": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": { "type": ["integer", "null"] },
+        "spot": { "type": ["number", "null"] },
+        "volatility": { "type": ["number", "null"], "description": "연 %" },
+        "dividend_yield": { "type": ["number", "null"], "description": "연 %" },
+        "shares_outstanding": { "type": ["number", "null"] },
+        "peer_companies": { "type": "array", "items": { "type": "object" } },
+        "data_source": { "type": ["string", "null"] },
+        "as_of": { "type": ["string", "null"], "format": "date" }
+      }
+    },
+    "curves": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["risk_free_curve", "interpolation_method", "curve_version"],
+      "description": "final 단계: 포인트 배열 스냅샷만 허용. risk_free_ref / credit_ref 는 불허(additionalProperties:false).",
+      "properties": {
+        "risk_free_curve": { "$ref": "#/$defs/curve" },
+        "credit_curve": { "anyOf": [{ "$ref": "#/$defs/curve" }, { "type": "null" }] },
+        "curve_source": { "type": "string" },
+        "curve_version": { "type": "string" },
+        "interpolation_method": { "enum": ["linear", "log_linear", "monotone_convex"] },
+        "fallback_policy": { "enum": ["nearest_grade", "manual_only", "error"] }
+      }
+    },
+    "model": { "enum": ["TF_LATTICE", "LATTICE", "MONTE_CARLO", "LSMC", "BSM", "DCF"] },
+    "seed": { "type": "integer" },
+    "input_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "model_version": { "type": "string", "description": "예: cb-1.0.0" },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lattice_steps": { "type": "integer" },
+        "simulation_paths": { "type": "integer" },
+        "variance_reduction": { "enum": ["none", "antithetic", "sobol"] }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "input_hash 비대상. 추적용.",
+      "properties": {
+        "issuer": { "type": "string" },
+        "instrument_name": { "type": "string" },
+        "requested_by": { "type": "integer" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "$defs": {
+    "curve": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [{ "type": "number" }, { "type": "number" }],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "description": "[[tenor_year, rate_pct], ...]"
+    },
+    "conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "parity 는 입력이 아니다(패치 2.1). PricingResult.key_parameters.parity 에만 존재.",
+      "properties": {
+        "strike": { "type": "number" },
+        "ratio": { "type": ["number", "null"] },
+        "start": { "type": ["string", "null"], "format": "date" },
+        "end": { "type": ["string", "null"], "format": "date" },
+        "style": { "enum": ["AMERICAN", "EUROPEAN", "BERMUDAN", null] }
+      }
+    },
+    "exchange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "target_asset_id": { "type": ["integer", "null"] },
+        "ratio": { "type": ["number", "null"] },
+        "strike": { "type": ["number", "null"] }
+      }
+    },
+    "warrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "strike": { "type": ["number", "null"] },
+        "quantity": { "type": ["number", "null"] },
+        "separable": { "type": ["boolean", "null"] },
+        "start": { "type": ["string", "null"], "format": "date" },
+        "end": { "type": ["string", "null"], "format": "date" }
+      }
+    },
+    "redemption": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "put": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "yield": { "type": ["number", "null"] },
+            "start": { "type": ["string", "null"], "format": "date" },
+            "style": { "enum": ["AMERICAN", "EUROPEAN", "BERMUDAN", null] }
+          }
+        },
+        "call": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "yield": { "type": ["number", "null"] },
+            "start": { "type": ["string", "null"], "format": "date" }
+          }
+        }
+      }
+    },
+    "issuerCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "strike": { "type": ["number", "null"] },
+        "style": { "enum": ["AMERICAN", "EUROPEAN", "BERMUDAN", null] },
+        "start": { "type": ["string", "null"], "format": "date" }
+      }
+    },
+    "saleClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "discount_type": { "enum": ["standalone_riskfree", "credit", null] },
+        "strike_pct": { "type": ["number", "null"] },
+        "style": { "enum": ["AMERICAN", "EUROPEAN", "BERMUDAN", null] },
+        "beneficiary": { "enum": ["issuer", "third_party", null] }
+      }
+    },
+    "refixing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "start": { "type": ["string", "null"], "format": "date" },
+        "step_month": { "type": ["integer", "null"] },
+        "floor": { "type": ["number", "null"] },
+        "init_strike": { "type": ["number", "null"] },
+        "direction": { "enum": ["DOWN", "BOTH", null] }
+      }
+    },
+    "dilution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "new_shares": { "type": ["number", "null"] }
+      }
+    },
+    "vesting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schedule": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "date": { "type": "string", "format": "date" },
+              "ratio": { "type": "number" }
+            }
+          }
+        },
+        "cliff_month": { "type": ["integer", "null"] },
+        "forfeiture_rate": { "type": ["number", "null"] }
+      }
+    },
+    "perfCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metric": { "enum": ["revenue", "ebitda", "ni", "custom", null] },
+        "target": { "type": ["number", "null"] },
+        "probability": { "type": ["number", "null"], "description": "비시장 충족확률(0~1)" }
+      }
+    },
+    "marketCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["target_price", "tsr", "barrier", null] },
+        "target_price": { "type": ["number", "null"] },
+        "barrier": { "type": ["number", "null"] },
+        "knock": { "enum": ["in", "out", null] }
+      }
+    }
+  }
+}

@@ -1,0 +1,462 @@
+{
+  "description": "input_hash 교차검증 테스트 벡터(§2.5). expected_hash 는 pricing-engine/app/reproducer.py 정본 구현으로 1회 생성해 동결한다. Backend Kotlin(InputHash.kt)도 동일 input 에 대해 동일 hash 를 내야 하며 CI 에서 교차검증한다. input 은 final ValuationContext(커브 포인트 배열). input_hash 필드 자신은 해시 대상이 아니므로 input 에 포함하지 않는다.",
+  "algorithm": "SHA-256(canonical_blob), canonical_blob = json.dumps(canonicalize(ctx), sort_keys=True, separators=(',',':'), ensure_ascii=False, default=str)",
+  "vectors": [
+    {
+      "name": "TV1_CB_basic",
+      "intent": "CB 기본(리픽싱 無) — 표준 경로",
+      "input": {
+        "instrument_type": "CB",
+        "valuation_date": "2024-06-26",
+        "instrument_id": 3001,
+        "organization_id": 12,
+        "terms": {
+          "issue_date": "2023-09-13",
+          "maturity_date": "2026-09-13",
+          "issue_amount": 3000000000,
+          "face_value": 10000,
+          "coupon_rate": 2.0,
+          "coupon_freq_month": 3,
+          "guaranteed_yield": 8.0,
+          "redemption_type": "bullet",
+          "interest_payment_type": "cash"
+        },
+        "rights": {
+          "conversion": {
+            "strike": 3260,
+            "ratio": 1,
+            "start": "2024-09-13",
+            "style": "AMERICAN"
+          },
+          "refixing": {
+            "enabled": false
+          },
+          "redemption": {
+            "put": {
+              "enabled": true,
+              "yield": 8.0,
+              "start": "2025-09-13",
+              "style": "BERMUDAN"
+            },
+            "call": {
+              "enabled": false
+            }
+          },
+          "sale_claim": {
+            "enabled": false
+          },
+          "dilution": {
+            "enabled": false
+          }
+        },
+        "market": {
+          "asset_id": 880,
+          "spot": 3260,
+          "volatility": 45.0,
+          "dividend_yield": 0.0,
+          "shares_outstanding": 12000000,
+          "data_source": "manual",
+          "as_of": "2024-06-26"
+        },
+        "curves": {
+          "risk_free_curve": [
+            [
+              0.25,
+              3.41
+            ],
+            [
+              1,
+              3.35
+            ],
+            [
+              3,
+              3.3
+            ]
+          ],
+          "credit_curve": [
+            [
+              0.25,
+              13.45
+            ],
+            [
+              1,
+              14.1
+            ],
+            [
+              3,
+              15.02
+            ]
+          ],
+          "curve_source": "uploaded:2024-06-26/B-/v1",
+          "curve_version": "v1",
+          "interpolation_method": "log_linear",
+          "fallback_policy": "nearest_grade"
+        },
+        "model": "TF_LATTICE",
+        "seed": 20240101,
+        "model_version": "cb-1.0.0",
+        "options": {
+          "lattice_steps": 1000
+        },
+        "metadata": {
+          "issuer": "예시바이오",
+          "instrument_name": "예시바이오 3CB",
+          "requested_by": 7
+        }
+      },
+      "canonical_blob": "{\"curves\":{\"credit_curve\":[[0.25,13.45],[1,14.1],[3,15.02]],\"curve_version\":\"v1\",\"interpolation_method\":\"log_linear\",\"risk_free_curve\":[[0.25,3.41],[1,3.35],[3,3.3]]},\"instrument_type\":\"CB\",\"market\":{\"as_of\":\"2024-06-26\",\"asset_id\":880,\"dividend_yield\":0.0,\"shares_outstanding\":12000000,\"spot\":3260,\"volatility\":45.0},\"model\":\"TF_LATTICE\",\"model_version\":\"cb-1.0.0\",\"options\":{\"lattice_steps\":1000},\"rights\":{\"conversion\":{\"ratio\":1,\"start\":\"2024-09-13\",\"strike\":3260,\"style\":\"AMERICAN\"},\"dilution\":{},\"redemption\":{\"call\":{\"enabled\":false},\"put\":{\"enabled\":true,\"start\":\"2025-09-13\",\"style\":\"BERMUDAN\",\"yield\":8.0}},\"refixing\":{},\"sale_claim\":{}},\"seed\":20240101,\"terms\":{\"coupon_freq_month\":3,\"coupon_rate\":2.0,\"face_value\":10000,\"guaranteed_yield\":8.0,\"interest_payment_type\":\"cash\",\"issue_amount\":3000000000,\"issue_date\":\"2023-09-13\",\"maturity_date\":\"2026-09-13\",\"redemption_type\":\"bullet\"},\"valuation_date\":\"2024-06-26\"}",
+      "expected_hash": "49adc6d3a0e90defe6774df47f9265509ac3102257e9c5883777f5833cf2d7b8"
+    },
+    {
+      "name": "TV2_CB_refixing",
+      "intent": "CB 리픽싱 有 — 권리 객체 정규화",
+      "input": {
+        "instrument_type": "CB",
+        "valuation_date": "2024-06-26",
+        "instrument_id": 3001,
+        "organization_id": 12,
+        "terms": {
+          "issue_date": "2023-09-13",
+          "maturity_date": "2026-09-13",
+          "issue_amount": 3000000000,
+          "face_value": 10000,
+          "coupon_rate": 2.0,
+          "coupon_freq_month": 3,
+          "guaranteed_yield": 8.0,
+          "redemption_type": "bullet",
+          "interest_payment_type": "cash"
+        },
+        "rights": {
+          "conversion": {
+            "strike": 3260,
+            "ratio": 1,
+            "start": "2024-09-13",
+            "style": "AMERICAN"
+          },
+          "refixing": {
+            "enabled": true,
+            "start": "2024-09-13",
+            "step_month": 3,
+            "floor": 2282,
+            "init_strike": 3260,
+            "direction": "DOWN"
+          },
+          "redemption": {
+            "put": {
+              "enabled": true,
+              "yield": 8.0,
+              "start": "2025-09-13",
+              "style": "BERMUDAN"
+            },
+            "call": {
+              "enabled": false
+            }
+          },
+          "sale_claim": {
+            "enabled": true,
+            "discount_type": "standalone_riskfree",
+            "strike_pct": 100,
+            "style": "AMERICAN",
+            "beneficiary": "issuer"
+          },
+          "dilution": {
+            "enabled": false
+          }
+        },
+        "market": {
+          "asset_id": 880,
+          "spot": 3260,
+          "volatility": 45.0,
+          "dividend_yield": 0.0,
+          "shares_outstanding": 12000000,
+          "data_source": "manual",
+          "as_of": "2024-06-26"
+        },
+        "curves": {
+          "risk_free_curve": [
+            [
+              0.25,
+              3.41
+            ],
+            [
+              1,
+              3.35
+            ],
+            [
+              3,
+              3.3
+            ]
+          ],
+          "credit_curve": [
+            [
+              0.25,
+              13.45
+            ],
+            [
+              1,
+              14.1
+            ],
+            [
+              3,
+              15.02
+            ]
+          ],
+          "curve_source": "uploaded:2024-06-26/B-/v1",
+          "curve_version": "v1",
+          "interpolation_method": "log_linear",
+          "fallback_policy": "nearest_grade"
+        },
+        "model": "LSMC",
+        "seed": 20240101,
+        "model_version": "cb-1.0.0",
+        "options": {
+          "simulation_paths": 100000,
+          "variance_reduction": "antithetic"
+        },
+        "metadata": {
+          "issuer": "예시바이오",
+          "instrument_name": "예시바이오 3CB",
+          "requested_by": 7
+        }
+      },
+      "canonical_blob": "{\"curves\":{\"credit_curve\":[[0.25,13.45],[1,14.1],[3,15.02]],\"curve_version\":\"v1\",\"interpolation_method\":\"log_linear\",\"risk_free_curve\":[[0.25,3.41],[1,3.35],[3,3.3]]},\"instrument_type\":\"CB\",\"market\":{\"as_of\":\"2024-06-26\",\"asset_id\":880,\"dividend_yield\":0.0,\"shares_outstanding\":12000000,\"spot\":3260,\"volatility\":45.0},\"model\":\"LSMC\",\"model_version\":\"cb-1.0.0\",\"options\":{\"simulation_paths\":100000,\"variance_reduction\":\"antithetic\"},\"rights\":{\"conversion\":{\"ratio\":1,\"start\":\"2024-09-13\",\"strike\":3260,\"style\":\"AMERICAN\"},\"dilution\":{},\"redemption\":{\"call\":{\"enabled\":false},\"put\":{\"enabled\":true,\"start\":\"2025-09-13\",\"style\":\"BERMUDAN\",\"yield\":8.0}},\"refixing\":{\"direction\":\"DOWN\",\"enabled\":true,\"floor\":2282,\"init_strike\":3260,\"start\":\"2024-09-13\",\"step_month\":3},\"sale_claim\":{\"beneficiary\":\"issuer\",\"discount_type\":\"standalone_riskfree\",\"enabled\":true,\"strike_pct\":100,\"style\":\"AMERICAN\"}},\"seed\":20240101,\"terms\":{\"coupon_freq_month\":3,\"coupon_rate\":2.0,\"face_value\":10000,\"guaranteed_yield\":8.0,\"interest_payment_type\":\"cash\",\"issue_amount\":3000000000,\"issue_date\":\"2023-09-13\",\"maturity_date\":\"2026-09-13\",\"redemption_type\":\"bullet\"},\"valuation_date\":\"2024-06-26\"}",
+      "expected_hash": "ae907af4cbf21a5383e858a937d52fa450019adde8865877498ab65629843631"
+    },
+    {
+      "name": "TV3_RCPS",
+      "intent": "RCPS(상환·우선배당) — 우선주형 terms",
+      "input": {
+        "instrument_type": "RCPS",
+        "valuation_date": "2024-06-26",
+        "instrument_id": 3002,
+        "terms": {
+          "issue_date": "2021-06-30",
+          "maturity_date": "2031-06-30",
+          "issue_price": 20619,
+          "issue_amount": 5000000000,
+          "coupon_rate": 0.024,
+          "dividend_cumulative": true,
+          "guaranteed_yield": 5.0
+        },
+        "rights": {
+          "conversion": {
+            "strike": 20619,
+            "ratio": 1,
+            "start": "2022-06-30"
+          },
+          "refixing": {
+            "enabled": true,
+            "floor": 14433,
+            "init_strike": 20619,
+            "direction": "DOWN"
+          },
+          "redemption": {
+            "put": {
+              "enabled": true,
+              "start": "2024-06-30",
+              "style": "AMERICAN"
+            }
+          },
+          "issuer_call": {
+            "enabled": false
+          }
+        },
+        "market": {
+          "asset_id": 881,
+          "spot": 22000,
+          "volatility": 50.0,
+          "dividend_yield": 0.0
+        },
+        "curves": {
+          "risk_free_curve": [
+            [
+              1,
+              3.35
+            ],
+            [
+              5,
+              3.4
+            ],
+            [
+              10,
+              3.55
+            ]
+          ],
+          "credit_curve": [
+            [
+              1,
+              9.1
+            ],
+            [
+              5,
+              10.2
+            ],
+            [
+              10,
+              11.05
+            ]
+          ],
+          "curve_source": "uploaded:2024-06-26/BB/v2",
+          "curve_version": "v2",
+          "interpolation_method": "linear",
+          "fallback_policy": "nearest_grade"
+        },
+        "model": "LATTICE",
+        "seed": 20240101,
+        "model_version": "rcps-1.0.0",
+        "metadata": {
+          "issuer": "예시테크"
+        }
+      },
+      "canonical_blob": "{\"curves\":{\"credit_curve\":[[1,9.1],[5,10.2],[10,11.05]],\"curve_version\":\"v2\",\"interpolation_method\":\"linear\",\"risk_free_curve\":[[1,3.35],[5,3.4],[10,3.55]]},\"instrument_type\":\"RCPS\",\"market\":{\"asset_id\":881,\"dividend_yield\":0.0,\"spot\":22000,\"volatility\":50.0},\"model\":\"LATTICE\",\"model_version\":\"rcps-1.0.0\",\"options\":{},\"rights\":{\"conversion\":{\"ratio\":1,\"start\":\"2022-06-30\",\"strike\":20619},\"issuer_call\":{},\"redemption\":{\"put\":{\"enabled\":true,\"start\":\"2024-06-30\",\"style\":\"AMERICAN\"}},\"refixing\":{\"direction\":\"DOWN\",\"enabled\":true,\"floor\":14433,\"init_strike\":20619}},\"seed\":20240101,\"terms\":{\"coupon_rate\":0.024,\"dividend_cumulative\":true,\"guaranteed_yield\":5.0,\"issue_amount\":5000000000,\"issue_date\":\"2021-06-30\",\"issue_price\":20619,\"maturity_date\":\"2031-06-30\"},\"valuation_date\":\"2024-06-26\"}",
+      "expected_hash": "ca64a4f4ec96c8552286fedb9815f90eb836dd79273b707f6b9c366fc78c0f5b"
+    },
+    {
+      "name": "TV4_SO_maturity_null",
+      "intent": "SO(만기 null, expected_term) — null 제거·주식보상형",
+      "input": {
+        "instrument_type": "SO",
+        "valuation_date": "2024-06-26",
+        "instrument_id": 3003,
+        "terms": {
+          "grant_date": "2024-01-02",
+          "maturity_date": null,
+          "grant_quantity": 100000,
+          "exercise_price": 15000,
+          "expected_term": 4.5
+        },
+        "rights": {
+          "vesting": {
+            "schedule": [
+              {
+                "date": "2026-01-02",
+                "ratio": 0.5
+              },
+              {
+                "date": "2027-01-02",
+                "ratio": 0.5
+              }
+            ],
+            "cliff_month": 12,
+            "forfeiture_rate": 5.0
+          }
+        },
+        "market": {
+          "asset_id": 882,
+          "spot": 15000,
+          "volatility": 40.0,
+          "dividend_yield": 1.0,
+          "shares_outstanding": 8000000,
+          "as_of": null
+        },
+        "curves": {
+          "risk_free_curve": [
+            [
+              1,
+              3.35
+            ],
+            [
+              5,
+              3.4
+            ]
+          ],
+          "credit_curve": null,
+          "curve_source": "uploaded:2024-06-26/RF/v1",
+          "curve_version": "v1",
+          "interpolation_method": "linear",
+          "fallback_policy": "error"
+        },
+        "model": "BSM",
+        "seed": 20240101,
+        "model_version": "so-1.0.0",
+        "metadata": {
+          "issuer": "예시소프트"
+        }
+      },
+      "canonical_blob": "{\"curves\":{\"curve_version\":\"v1\",\"interpolation_method\":\"linear\",\"risk_free_curve\":[[1,3.35],[5,3.4]]},\"instrument_type\":\"SO\",\"market\":{\"asset_id\":882,\"dividend_yield\":1.0,\"shares_outstanding\":8000000,\"spot\":15000,\"volatility\":40.0},\"model\":\"BSM\",\"model_version\":\"so-1.0.0\",\"options\":{},\"rights\":{\"vesting\":{\"cliff_month\":12,\"forfeiture_rate\":5.0,\"schedule\":[{\"date\":\"2026-01-02\",\"ratio\":0.5},{\"date\":\"2027-01-02\",\"ratio\":0.5}]}},\"seed\":20240101,\"terms\":{\"exercise_price\":15000,\"expected_term\":4.5,\"grant_date\":\"2024-01-02\",\"grant_quantity\":100000},\"valuation_date\":\"2024-06-26\"}",
+      "expected_hash": "a92a925645a823eb10890d0f65998a43d974c484a8550c4baa7f3c1ac27f7507"
+    },
+    {
+      "name": "TV5_CSO_tranche",
+      "intent": "CSO(tranche·market/perf condition) — 중첩 배열·조건 객체",
+      "input": {
+        "instrument_type": "CSO",
+        "valuation_date": "2024-06-26",
+        "instrument_id": 3004,
+        "terms": {
+          "grant_date": "2024-01-02",
+          "maturity_date": null,
+          "grant_quantity": 200000,
+          "exercise_price": 15000,
+          "expected_term": 5.0,
+          "tranche": [
+            {
+              "id": "T1",
+              "quantity": 100000
+            },
+            {
+              "id": "T2",
+              "quantity": 100000
+            }
+          ]
+        },
+        "rights": {
+          "vesting": {
+            "schedule": [
+              {
+                "date": "2027-01-02",
+                "ratio": 1.0
+              }
+            ],
+            "cliff_month": 24,
+            "forfeiture_rate": 7.0
+          },
+          "market_condition": {
+            "type": "target_price",
+            "target_price": 30000,
+            "barrier": 30000,
+            "knock": "in"
+          },
+          "performance_condition": {
+            "metric": "revenue",
+            "target": 100000000000,
+            "probability": 0.6
+          }
+        },
+        "market": {
+          "asset_id": 883,
+          "spot": 15000,
+          "volatility": 55.0,
+          "dividend_yield": 0.0,
+          "shares_outstanding": 10000000
+        },
+        "curves": {
+          "risk_free_curve": [
+            [
+              1,
+              3.35
+            ],
+            [
+              5,
+              3.4
+            ]
+          ],
+          "credit_curve": null,
+          "curve_source": "uploaded:2024-06-26/RF/v1",
+          "curve_version": "v1",
+          "interpolation_method": "linear",
+          "fallback_policy": "error"
+        },
+        "model": "MONTE_CARLO",
+        "seed": 20240101,
+        "model_version": "cso-1.0.0",
+        "options": {
+          "simulation_paths": 200000,
+          "variance_reduction": "antithetic"
+        }
+      },
+      "canonical_blob": "{\"curves\":{\"curve_version\":\"v1\",\"interpolation_method\":\"linear\",\"risk_free_curve\":[[1,3.35],[5,3.4]]},\"instrument_type\":\"CSO\",\"market\":{\"asset_id\":883,\"dividend_yield\":0.0,\"shares_outstanding\":10000000,\"spot\":15000,\"volatility\":55.0},\"model\":\"MONTE_CARLO\",\"model_version\":\"cso-1.0.0\",\"options\":{\"simulation_paths\":200000,\"variance_reduction\":\"antithetic\"},\"rights\":{\"market_condition\":{\"barrier\":30000,\"knock\":\"in\",\"target_price\":30000,\"type\":\"target_price\"},\"performance_condition\":{\"metric\":\"revenue\",\"probability\":0.6,\"target\":100000000000},\"vesting\":{\"cliff_month\":24,\"forfeiture_rate\":7.0,\"schedule\":[{\"date\":\"2027-01-02\",\"ratio\":1.0}]}},\"seed\":20240101,\"terms\":{\"exercise_price\":15000,\"expected_term\":5.0,\"grant_date\":\"2024-01-02\",\"grant_quantity\":200000,\"tranche\":[{\"id\":\"T1\",\"quantity\":100000},{\"id\":\"T2\",\"quantity\":100000}]},\"valuation_date\":\"2024-06-26\"}",
+      "expected_hash": "64010f71e8dd1a0d92abb0e099e241d948ef828eb25c8066d41a7d3bea31757e"
+    }
+  ]
+}

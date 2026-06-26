@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fairvalue.dev/schemas/pricing-result.schema.json",
+  "title": "PricingResult",
+  "description": "Engine 반환 결과. 표준 component key 12종만 사용(패치 B-3). components 의 부호포함 합 == total_fair_value(§4.10). warnings/errors 는 required + default [] (패치 2.4).",
+  "type": "object",
+  "required": [
+    "job_id", "instrument_id", "instrument_type", "valuation_date",
+    "status", "total_fair_value", "components", "key_parameters",
+    "reproducibility", "warnings", "errors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "job_id": { "type": "integer" },
+    "instrument_id": { "type": "integer" },
+    "instrument_type": { "enum": ["RCPS", "CPS", "CB", "EB", "BW", "SO", "CSO"] },
+    "valuation_date": { "type": "string", "format": "date" },
+    "status": { "enum": ["DONE", "FAILED", "PARTIAL"] },
+    "total_fair_value": { "type": ["number", "null"] },
+    "per_unit_value": { "type": ["number", "null"] },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "표준 12종 key 만 허용. total_fair_value 는 나머지 부호포함 합의 echo.",
+      "properties": {
+        "bond_value": { "type": ["number", "null"], "description": "채권(host) 가치, 부호 +" },
+        "preferred_share_value": { "type": ["number", "null"], "description": "우선주(host) 가치, 부호 +" },
+        "conversion_option_value": { "type": ["number", "null"], "description": "전환옵션, 부호 +" },
+        "exchange_option_value": { "type": ["number", "null"], "description": "교환옵션, 부호 +" },
+        "warrant_value": { "type": ["number", "null"], "description": "신주인수권, 부호 +" },
+        "redemption_option_value": { "type": ["number", "null"], "description": "상환권(풋), 부호 +" },
+        "issuer_call_value": { "type": ["number", "null"], "description": "발행자 콜, 부호 − (보유자 불리)" },
+        "sale_claim_value": { "type": ["number", "null"], "description": "매도청구권, 부호 − (보유자 불리)" },
+        "stock_option_value": { "type": ["number", "null"], "description": "주식매수선택권, 부호 +" },
+        "conditional_option_value": { "type": ["number", "null"], "description": "조건부 SO, 부호 +" },
+        "dilution_effect": { "type": ["number", "null"], "description": "희석효과, 부호 − (가치 감소)" },
+        "total_fair_value": { "type": ["number", "null"], "description": "= 나머지 부호포함 합의 echo" }
+      }
+    },
+    "key_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "risk_free_rate": { "type": ["number", "null"] },
+        "ytm": { "type": ["number", "null"] },
+        "credit_spread": { "type": ["number", "null"] },
+        "volatility": { "type": ["number", "null"] },
+        "dividend_yield": { "type": ["number", "null"] },
+        "parity": { "type": ["number", "null"], "description": "엔진 산출. 입력 아님(패치 2.1)." },
+        "discount_rate": { "type": ["number", "null"] },
+        "model_name": { "type": "string" },
+        "model_version": { "type": "string" },
+        "simulation_paths": { "type": ["integer", "null"] },
+        "lattice_steps": { "type": ["integer", "null"] }
+      },
+      "required": ["model_name", "model_version"]
+    },
+    "sensitivity_summary": {
+      "type": ["object", "null"],
+      "properties": {
+        "tornado": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "variable": { "type": "string" },
+              "down": { "type": "number" },
+              "up": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "scenario_summary": {
+      "type": ["object", "null"],
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "total_fair_value": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "audit_data": {
+      "type": ["object", "null"],
+      "properties": {
+        "cashflow_schedule": { "type": "array", "items": { "type": "object" } },
+        "discount_factors": { "type": "array", "items": { "type": "object" } },
+        "curve_snapshot": { "type": "object" },
+        "node_summary": { "type": "object" },
+        "path_summary": { "type": "object" },
+        "exercise_log": { "type": "array", "items": { "type": "object" } },
+        "calculation_trace": { "type": "array", "items": { "type": "object" } },
+        "input_snapshot_hash": { "type": "string" }
+      }
+    },
+    "reproducibility": {
+      "type": "object",
+      "required": ["input_hash", "seed", "model_version"],
+      "properties": {
+        "input_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "seed": { "type": "integer" },
+        "model_version": { "type": "string" },
+        "engine_commit": { "type": ["string", "null"] },
+        "computed_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "warnings": { "type": "array", "items": { "$ref": "#/$defs/issue" }, "default": [] },
+    "errors": { "type": "array", "items": { "$ref": "#/$defs/issue" }, "default": [] }
+  },
+  "$defs": {
+    "issue": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "field": { "type": ["string", "null"] },
+        "stage": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
