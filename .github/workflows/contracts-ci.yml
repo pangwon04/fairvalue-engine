@@ -1,0 +1,53 @@
+name: contracts-ci
+
+# FairValue 3대 계약 v0.1 — 재현성·합계·교차해시 게이트.
+# PR 필수 통과: Python(reproducer CLI + pytest) / Kotlin(InputHash 교차검증).
+
+on:
+  pull_request:
+    paths:
+      - "shared/schemas/**"
+      - "pricing-engine/**"
+      - "backend/**"
+      - "golden-values/**"
+      - ".github/workflows/contracts-ci.yml"
+  push:
+    branches: [main, master]
+
+jobs:
+  python:
+    name: python — hash vectors & golden
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install deps
+        run: pip install pydantic pytest
+      - name: input_hash 재검증 (expected_hash 동결 확인)
+        working-directory: pricing-engine
+        run: python -m app.reproducer ../shared/schemas/hash-test-vectors.json
+      - name: pytest (hash vectors + golden)
+        working-directory: pricing-engine
+        run: pytest tests -v
+
+  kotlin:
+    name: kotlin — InputHash 교차검증
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: wrapper jar 보장 (저장소에 없으면 생성)
+        working-directory: backend
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper --gradle-version 8.7
+          fi
+      - name: gradle test (InputHash.kt 컴파일 + Python 교차해시)
+        working-directory: backend
+        run: ./gradlew test --no-daemon
