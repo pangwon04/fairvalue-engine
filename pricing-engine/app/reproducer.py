@@ -92,6 +92,7 @@ def input_hash(ctx: dict) -> str:
 if __name__ == "__main__":
     # hash-test-vectors.json 의 expected_hash 를 생성/검증하는 CLI.
     #   python -m app.reproducer <path/to/hash-test-vectors.json> [--write]
+    # 비교 모드(--write 없음): 불일치 1건 이상이면 exit 1, 전부 일치면 exit 0.
     import sys
     from pathlib import Path
 
@@ -105,19 +106,29 @@ if __name__ == "__main__":
     data = json.loads(path.read_text(encoding="utf-8"))
 
     changed = False
+    mismatches = []
     for case in data["vectors"]:
         blob = canonical_blob(case["input"])
         h = hashlib.sha256(blob.encode("utf-8")).hexdigest()
         prev = case.get("expected_hash")
         status = "OK" if prev == h else ("SET" if prev in (None, "", "TBD") else "MISMATCH")
-        print(f"{case['name']:<24} {status:<9} {h}")
+        print("{:<24} {:<9} {}".format(case["name"], status, h))
         if write:
             case["canonical_blob"] = blob
             case["expected_hash"] = h
             changed = True
         elif status == "MISMATCH":
-            print(f"  expected={prev}")
+            print("  expected={}".format(prev))
+            mismatches.append(case["name"])
 
     if write and changed:
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"\n[written] {path}")
+        out = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+        path.write_text(out, encoding="utf-8")
+        print("\n[written] {}".format(path))
+        raise SystemExit(0)
+
+    if mismatches:
+        print("\n[FAIL] expected_hash 불일치 {}건: {}".format(len(mismatches), ", ".join(mismatches)))
+        raise SystemExit(1)
+    print("\n[OK] {}개 벡터 전부 expected_hash 일치".format(len(data["vectors"])))
+    raise SystemExit(0)
