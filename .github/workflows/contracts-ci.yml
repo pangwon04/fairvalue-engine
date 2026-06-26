@@ -50,4 +50,6 @@ jobs:
           fi
       - name: gradle test (InputHash.kt 컴파일 + Python 교차해시)
         working-directory: backend
-        run: ./gradlew test --no-daemon
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon
