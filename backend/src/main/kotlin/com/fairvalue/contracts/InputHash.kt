@@ -4,6 +4,7 @@
 // 정본은 pricing-engine/app/reproducer.py 이며, 본 구현은 동일 정규화 8단계를
 // 재현해 **동일 input 에 대해 동일 hash** 를 산출해야 한다.
 // shared/schemas/hash-test-vectors.json 의 expected_hash 와 CI 에서 교차검증한다.
+// (W7.5: resources → src/main/kotlin 으로 이동, package 변경. 해시 로직은 불변.)
 //
 // [Python 과의 직렬화 정합 계약 — 반드시 동일해야 하는 지점]
 //   - 정수/실수 구분 보존: JSON 입력에서 소수점 없는 수는 정수, 있는 수는 실수로 취급.
@@ -11,19 +12,17 @@
 //   - 실수 표기: Python repr 의 최단 왕복 표기와 동일해야 함.
 //     예) 45.0 -> "45.0", 3.30 -> "3.3", 0.0 -> "0.0", 14.10 -> "14.1", 0.024 -> "0.024"
 //     Java 의 Double.toString 도 위 값들에 대해 동일 결과를 낸다.
-//   - float 반올림: 소수 10자리(round half to even 가 아닌, Python round 와 동일하게
-//     처리해야 함 — 테스트 벡터 값들은 10자리 미만이라 영향 없음).
+//   - float 반올림: 소수 10자리(Python round 와 동일 — 테스트 벡터 값은 10자리 미만이라 무영향).
 //   - 키 정렬: sort_keys=True (UTF-16 코드포인트 기준 사전식. ASCII 키만 사용하므로 안전).
 //   - 구분자: (",", ":") 공백 없음.
-//   - UTF-8 / ensure_ascii=false: 한글 등 비ASCII 를 escape 하지 않음(단, 해시 대상엔
-//     비ASCII 문구 필드가 없음 — metadata/source 는 제외 대상).
+//   - UTF-8 / ensure_ascii=false: 비ASCII escape 안 함(해시 대상엔 비ASCII 문구 없음).
 //   - 빈 권리조건: enabled==false 권리는 {} 로 정규화.
 //   - null 제거: 값이 null 인 키는 삭제.
 //   - 배열 순서 보존: 커브 포인트 정렬 금지.
 //
-// 의존성: com.fasterxml.jackson.databind (Jackson). build.gradle 에 추가 필요.
+// 의존성: com.fasterxml.jackson.databind (build.gradle.kts 에 선언).
 // ===========================================================================
-package dev.fairvalue.context
+package com.fairvalue.contracts
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
