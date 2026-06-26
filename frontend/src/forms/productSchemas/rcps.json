@@ -1,0 +1,173 @@
+{
+  "_meta": {
+    "note": "샘플 defaultValue 는 '구조 시연용 샘플'이며 실제 시장값이 아님. 실데이터 확보 후 defaultValue 만 교체하면 구조는 그대로 유지된다.",
+    "contract": "shared/schemas/form-schema.ts (v0.1)",
+    "rights_exposed": ["conversion(필수)", "refixing", "redemption.put", "issuer_call", "sale_claim(선택)"]
+  },
+  "product": "RCPS",
+  "version": "0.1.0",
+  "title": "상환전환우선주(RCPS) 평가",
+  "steps": [
+    {
+      "id": "instrument_basics",
+      "title": "기본정보",
+      "fields": [
+        { "key": "issuer", "label": "발행사", "type": "text", "required": true, "bind": "metadata.issuer" },
+        { "key": "name", "label": "상품명", "type": "text", "required": true, "bind": "metadata.instrument_name" },
+        { "key": "valuation_date", "label": "평가기준일", "type": "date", "required": true, "bind": "valuation_date",
+          "validations": [{ "rule": "required", "message": "평가기준일은 필수입니다.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "terms",
+      "title": "발행조건",
+      "fields": [
+        { "key": "issue_date", "label": "발행일", "type": "date", "required": true, "bind": "terms.issue_date" },
+        { "key": "maturity_date", "label": "만기일(상환청구 기준)", "type": "date", "required": true, "bind": "terms.maturity_date",
+          "validations": [{ "rule": "maturityAfterIssueDate", "params": { "issueField": "issue_date" },
+            "message": "만기일은 발행일 이후여야 합니다.", "severity": "error" }] },
+        { "key": "issue_price", "label": "주당 발행가", "type": "currency", "unit": "원", "required": true, "bind": "terms.issue_price",
+          "defaultValue": 20619,
+          "validations": [{ "rule": "positive", "message": "발행가는 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "issue_amount", "label": "발행금액", "type": "currency", "unit": "원", "required": true, "bind": "terms.issue_amount" },
+        { "key": "dividend_rate", "label": "우선배당률", "type": "percentage", "unit": "%", "bind": "terms.coupon_rate",
+          "defaultValue": 0.024,
+          "validations": [{ "rule": "percentageRange", "params": { "min": 0, "max": 100 },
+            "message": "우선배당률은 0~100% 범위여야 합니다.", "severity": "error" }] },
+        { "key": "dividend_cumulative", "label": "누적적 여부", "type": "toggle", "defaultValue": true, "bind": "terms.dividend_cumulative" },
+        { "key": "guaranteed_yield", "label": "보장수익률(상환 IRR)", "type": "percentage", "unit": "%", "required": true, "bind": "terms.guaranteed_yield",
+          "defaultValue": 5 }
+      ]
+    },
+    {
+      "id": "underlying",
+      "title": "기초자산",
+      "fields": [
+        { "key": "asset", "label": "발행사 보통주", "type": "assetSearch", "required": true, "bind": "market.asset_id",
+          "resolve": { "to": "market.asset_id", "kind": "asset" },
+          "validations": [{ "rule": "assetRequired", "message": "기초자산을 선택하세요.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "parameters",
+      "title": "평가 파라미터",
+      "fields": [
+        { "key": "risk_free_curve", "label": "무위험수익률 커브", "type": "curveSelector", "required": true, "bind": "curves.risk_free_ref",
+          "resolve": { "to": "curves.risk_free_curve", "kind": "curve" },
+          "validations": [{ "rule": "curveRequired", "params": { "kind": "RISK_FREE" },
+            "message": "무위험 커브를 선택하세요.", "severity": "error" }] },
+        { "key": "credit_curve", "label": "신용등급 커브", "type": "curveSelector", "required": true, "bind": "curves.credit_ref",
+          "resolve": { "to": "curves.credit_curve", "kind": "curve" },
+          "validations": [{ "rule": "curveRequired", "params": { "kind": "CREDIT" },
+            "message": "신용 커브를 선택하세요.", "severity": "error" }] },
+        { "key": "volatility", "label": "변동성", "type": "percentage", "unit": "%", "required": true, "bind": "market.volatility",
+          "validations": [{ "rule": "volatilityPositive", "message": "변동성은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "dividend_yield", "label": "배당수익률", "type": "percentage", "unit": "%", "defaultValue": 0, "bind": "market.dividend_yield" },
+        { "key": "spot", "label": "기준일 주가/공정가치", "type": "currency", "unit": "원", "required": true, "bind": "market.spot",
+          "validations": [{ "rule": "pricePositive", "message": "주가는 0보다 커야 합니다.", "severity": "error" }] }
+      ]
+    },
+    {
+      "id": "rights.conversion",
+      "title": "전환권",
+      "fields": [
+        { "key": "conv_price", "label": "전환가액", "type": "currency", "unit": "원", "required": true, "bind": "rights.conversion.strike",
+          "defaultValue": 20619 },
+        { "key": "conv_ratio", "label": "전환비율", "type": "number", "bind": "rights.conversion.ratio", "defaultValue": 1 },
+        { "key": "conv_start", "label": "전환청구 시작일", "type": "date", "required": true, "bind": "rights.conversion.start",
+          "validations": [{ "rule": "exercisePeriodWithinMaturity",
+            "message": "전환기간은 만기 이내여야 합니다.", "severity": "error" }] },
+        { "key": "parity", "label": "패리티(자동계산)", "type": "computed", "computeFrom": ["spot", "conv_price"],
+          "help": "spot / conv_price × 액면 (표시 전용)" }
+      ]
+    },
+    {
+      "id": "rights.refixing",
+      "title": "리픽싱",
+      "fields": [
+        { "key": "use_refixing", "label": "리픽싱 적용", "type": "toggle", "defaultValue": true, "bind": "rights.refixing.enabled" },
+        { "key": "refix_floor", "label": "리픽싱 하한가", "type": "currency", "unit": "원",
+          "showWhen": { "field": "use_refixing", "op": "truthy" }, "bind": "rights.refixing.floor",
+          "defaultValue": 14433,
+          "validations": [{ "rule": "refixingFloorCheck", "params": { "initField": "conv_price" },
+            "message": "하한가는 0 이상이며 최초 전환가 이하여야 합니다.", "severity": "error" }] },
+        { "key": "refix_direction", "label": "리픽싱 방향", "type": "select",
+          "showWhen": { "field": "use_refixing", "op": "truthy" }, "bind": "rights.refixing.direction",
+          "defaultValue": "DOWN",
+          "options": [{ "label": "하향만", "value": "DOWN" }, { "label": "상·하향", "value": "BOTH" }] }
+      ]
+    },
+    {
+      "id": "rights.redemption",
+      "title": "상환권",
+      "fields": [
+        { "key": "redeemable", "label": "상환청구권 보유", "type": "toggle", "defaultValue": true, "bind": "rights.redemption.put.enabled" },
+        { "key": "redemption_start", "label": "상환청구 가능일", "type": "date",
+          "showWhen": { "field": "redeemable", "op": "truthy" }, "bind": "rights.redemption.put.start" },
+        { "key": "redemption_yield", "label": "상환 보장수익률(YTP)", "type": "percentage", "unit": "%",
+          "showWhen": { "field": "redeemable", "op": "truthy" }, "bind": "rights.redemption.put.yield",
+          "defaultValue": 5 },
+        { "key": "redemption_style", "label": "상환 행사유형", "type": "select",
+          "showWhen": { "field": "redeemable", "op": "truthy" }, "bind": "rights.redemption.put.style",
+          "defaultValue": "AMERICAN",
+          "options": [{ "label": "American", "value": "AMERICAN" }, { "label": "European", "value": "EUROPEAN" },
+                      { "label": "Bermudan", "value": "BERMUDAN" }] }
+      ]
+    },
+    {
+      "id": "rights.issuer_call",
+      "title": "발행자 콜",
+      "fields": [
+        { "key": "use_issuer_call", "label": "발행자 콜 보유", "type": "toggle", "defaultValue": false, "bind": "rights.issuer_call.enabled" },
+        { "key": "ic_strike", "label": "발행자 콜 행사가", "type": "currency", "unit": "원",
+          "showWhen": { "field": "use_issuer_call", "op": "truthy" }, "bind": "rights.issuer_call.strike" },
+        { "key": "ic_style", "label": "발행자 콜 행사유형", "type": "select",
+          "showWhen": { "field": "use_issuer_call", "op": "truthy" }, "bind": "rights.issuer_call.style",
+          "options": [{ "label": "American", "value": "AMERICAN" }, { "label": "European", "value": "EUROPEAN" },
+                      { "label": "Bermudan", "value": "BERMUDAN" }] }
+      ]
+    },
+    {
+      "id": "rights.sale_claim",
+      "title": "매도청구권(선택)",
+      "fields": [
+        { "key": "use_sale_claim", "label": "매도청구권 적용", "type": "toggle", "defaultValue": false, "bind": "rights.sale_claim.enabled" },
+        { "key": "sc_discount_type", "label": "할인유형", "type": "select",
+          "showWhen": { "field": "use_sale_claim", "op": "truthy" }, "bind": "rights.sale_claim.discount_type",
+          "options": [{ "label": "독립·무위험할인", "value": "standalone_riskfree" },
+                      { "label": "신용할인", "value": "credit" }] },
+        { "key": "sc_strike_pct", "label": "매도청구 행사가(%)", "type": "percentage", "unit": "%",
+          "showWhen": { "field": "use_sale_claim", "op": "truthy" }, "bind": "rights.sale_claim.strike_pct",
+          "validations": [{ "rule": "showWhenRequired", "message": "매도청구권의 행사가는 필수입니다.", "severity": "error" }] },
+        { "key": "sc_style", "label": "행사유형", "type": "select",
+          "showWhen": { "field": "use_sale_claim", "op": "truthy" }, "bind": "rights.sale_claim.style",
+          "options": [{ "label": "American", "value": "AMERICAN" }, { "label": "European", "value": "EUROPEAN" },
+                      { "label": "Bermudan", "value": "BERMUDAN" }] }
+      ]
+    },
+    {
+      "id": "model",
+      "title": "평가모형·실행옵션",
+      "fields": [
+        { "key": "model", "label": "평가모형", "type": "select", "required": true, "defaultValue": "LATTICE", "bind": "model",
+          "options": [{ "label": "이항격자", "value": "LATTICE" },
+                      { "label": "LSMC", "value": "LSMC" }],
+          "validations": [{ "rule": "modelCompatibility",
+            "message": "선택 모형이 입력된 권리조건과 호환되지 않습니다.", "severity": "error" }] },
+        { "key": "lattice_steps", "label": "격자 스텝수", "type": "number", "defaultValue": 1000,
+          "showWhen": { "field": "model", "op": "in", "value": ["LATTICE"] }, "bind": "options.lattice_steps",
+          "validations": [{ "rule": "min", "params": { "min": 100 }, "message": "격자 스텝수는 100 이상이어야 합니다.", "severity": "error" }] },
+        { "key": "simulation_paths", "label": "시뮬레이션 패스수", "type": "number", "defaultValue": 100000,
+          "showWhen": { "field": "model", "op": "in", "value": ["LSMC"] }, "bind": "options.simulation_paths" },
+        { "key": "seed", "label": "난수 시드", "type": "number", "defaultValue": 20240101, "bind": "seed" }
+      ]
+    },
+    {
+      "id": "review",
+      "title": "검토 및 계산",
+      "fields": [
+        { "key": "summary", "label": "입력 요약", "type": "readonly", "computeFrom": ["issuer", "valuation_date", "issue_price", "conv_price"] }
+      ]
+    }
+  ]
+}
