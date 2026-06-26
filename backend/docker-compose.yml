@@ -1,0 +1,24 @@
+# FairValue Backend — 로컬 개발용 PostgreSQL (Phase 1-A)
+# 사용: docker compose up -d db
+# 앱은 application-local.yml 기본값(localhost:5432/fairvalue)으로 접속한다.
+
+services:
+  db:
+    image: postgres:16
+    container_name: fairvalue-db
+    environment:
+      POSTGRES_DB: fairvalue
+      POSTGRES_USER: fairvalue
+      POSTGRES_PASSWORD: fairvalue
+    ports:
+      - "5432:5432"
+    volumes:
+      - fairvalue_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fairvalue -d fairvalue"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  fairvalue_pgdata:

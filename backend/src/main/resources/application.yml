@@ -1,0 +1,41 @@
+# FairValue Backend — 공통 설정 (Phase 1-A)
+# datasource 는 환경변수 기반(DB_URL/DB_USER/DB_PASSWORD). 로컬 기본값은 application-local.yml.
+# 활성 프로필 기본값은 local (env SPRING_PROFILES_ACTIVE 로 override).
+
+spring:
+  application:
+    name: fairvalue-backend
+    version: "0.1.0"
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/fairvalue}
+    username: ${DB_USER:fairvalue}
+    password: ${DB_PASSWORD:fairvalue}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # 스키마는 Flyway 가 관리한다. JPA 는 검증만(생성·변경 금지).
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# springdoc(OpenAPI) — 의존성만 추가된 상태. 실제 openapi.yaml 대조/노출은 다음 단계.
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html

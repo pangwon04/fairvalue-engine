@@ -1,0 +1,17 @@
+# FairValue Backend — local 프로필 기본값 (개발용)
+# docker-compose.yml 의 PostgreSQL 16 컨테이너에 맞춘 기본값.
+# 비밀번호 등 민감값은 환경변수가 우선한다(application.yml 의 ${DB_PASSWORD:...}).
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/fairvalue}
+    username: ${DB_USER:fairvalue}
+    password: ${DB_PASSWORD:fairvalue}
+
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    org.flywaydb: info
+    org.hibernate.SQL: debug
