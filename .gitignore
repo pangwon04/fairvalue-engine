@@ -1,0 +1,6 @@
+﻿node_modules/
+fv_engine_project/
+.gradle/
+build/
+build/
+*.log

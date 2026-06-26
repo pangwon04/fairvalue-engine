@@ -1,0 +1,17 @@
+# as_of=
+# kind=RISK_FREE
+# grade=
+# version=1
+# source=
+# --- 아래 rate_percent(%) 열을 채우세요. tenor_years는 표준 그리드(필요시 추가/삭제) ---
+tenor_years,rate_percent
+0.25,
+0.5,
+0.75,
+1,
+1.5,
+2,
+3,
+5,
+7,
+10,

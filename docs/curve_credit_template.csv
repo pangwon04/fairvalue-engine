@@ -1,0 +1,17 @@
+# as_of=
+# kind=CREDIT
+# grade=
+# version=1
+# source=
+# --- 신용등급 커브. grade(예: B-, BBB)를 위 메타에 반드시 기입. rate_percent(%) 입력 ---
+tenor_years,rate_percent
+0.25,
+0.5,
+0.75,
+1,
+1.5,
+2,
+3,
+5,
+7,
+10,
