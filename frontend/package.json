@@ -1,0 +1,21 @@
+{
+  "name": "fairvalue-frontend-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FairValue frontend 계약 검증 전용 패키지(풀앱 아님). 폼 스키마 테스트 + bind 일치 검증기 + openapi lint.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "verify:bind": "tsx scripts/verify-bind.ts",
+    "lint:openapi": "tsx scripts/lint-openapi.ts",
+    "verify:all": "vitest run && tsx scripts/verify-bind.ts && tsx scripts/lint-openapi.ts"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^10.1.0",
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "yaml": "^2.5.0"
+  }
+}

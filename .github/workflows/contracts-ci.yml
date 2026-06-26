@@ -1,7 +1,9 @@
 name: contracts-ci
 
-# FairValue 3대 계약 v0.1 — 재현성·합계·교차해시 게이트.
-# PR 필수 통과: Python(reproducer CLI + pytest) / Kotlin(InputHash 교차검증).
+# FairValue 3대 계약 v0.1 — 재현성·합계·교차해시·폼 bind 게이트.
+# PR 필수 통과:
+#   Python(reproducer CLI + pytest) / Kotlin(InputHash 교차검증) /
+#   Frontend(폼 스키마 vitest + bind 일치 검증기 + openapi lint).
 
 on:
   pull_request:
@@ -10,6 +12,7 @@ on:
       - "pricing-engine/**"
       - "backend/**"
       - "golden-values/**"
+      - "frontend/**"
       - ".github/workflows/contracts-ci.yml"
   push:
     branches: [main, master]
@@ -53,3 +56,18 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew test --no-daemon
+
+  frontend:
+    name: frontend — form schema · bind 검증 · openapi lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: install deps
+        working-directory: frontend
+        run: npm install
+      - name: verify:all (vitest + verify:bind + lint:openapi)
+        working-directory: frontend
+        run: npm run verify:all

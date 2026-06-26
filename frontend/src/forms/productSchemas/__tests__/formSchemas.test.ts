@@ -17,7 +17,7 @@
 //  11) parity 노출 상품 = {CB,RCPS,CPS,EB} 정확히
 // ===========================================================================
 
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
