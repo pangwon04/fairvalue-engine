@@ -1,0 +1,47 @@
+{
+  "_note": "cb_case1 입력 ValuationContext (명세 §3.4). 입력은 §3.4에 충실(face 10000, 전환가 3260, ratio 1). golden-values/cb_case1.json 의 expected 절대값은 NON-BLOCKING 참조다: 독점 산식 기반이며 golden total 167634 = 전환주식수 약 51.4주/좌(표준 face/strike=3.067주의 16.76배)를 함의하나 그 스케일은 §3.4 입력에 미명시. 또한 per_unit(base 15주), total/spot(51.4주), gross conv(96.4주)가 서로 달라 단순 CB 무차익으로 설명되지 않음(내부 자기모순). 따라서 절대값 일치는 강제하지 않고 엔진 self-consistency(Σ=total, 부호규칙, 격자vsMC 0.21%)로 검증한다. 발행자 권리(sale_claim.beneficiary=issuer)는 계약 충실하게 sale_claim_value 에 귀속(현행 유지). CB 외부 문헌검증용 별도 golden 슬롯은 추후(TODO).",
+  "instrument_type": "CB",
+  "valuation_date": "2024-06-26",
+  "organization_id": 12,
+  "instrument_id": 3001,
+  "job_id": 1,
+  "terms": {
+    "issue_date": "2023-09-13",
+    "maturity_date": "2026-09-13",
+    "issue_amount": 3000000000,
+    "face_value": 10000,
+    "coupon_rate": 2.0,
+    "coupon_freq_month": 3,
+    "guaranteed_yield": 8.0,
+    "redemption_type": "bullet",
+    "interest_payment_type": "cash"
+  },
+  "rights": {
+    "conversion": { "strike": 3260, "ratio": 1, "start": "2024-09-13", "style": "AMERICAN" },
+    "refixing": { "enabled": true, "start": "2024-09-13", "step_month": 3, "floor": 2282, "init_strike": 3260, "direction": "DOWN" },
+    "redemption": {
+      "put": { "enabled": true, "yield": 8.0, "start": "2025-09-13", "style": "BERMUDAN" },
+      "call": { "enabled": false }
+    },
+    "sale_claim": { "enabled": true, "discount_type": "standalone_riskfree", "strike_pct": 100, "style": "AMERICAN", "beneficiary": "issuer" },
+    "dilution": { "enabled": false }
+  },
+  "market": {
+    "asset_id": 880, "spot": 3260, "volatility": 45.0, "dividend_yield": 0.0,
+    "shares_outstanding": 12000000, "data_source": "manual", "as_of": "2024-06-26"
+  },
+  "curves": {
+    "risk_free_curve": [[0.25, 3.41], [1, 3.35], [3, 3.30]],
+    "credit_curve": [[0.25, 13.45], [1, 14.10], [3, 15.02]],
+    "curve_source": "uploaded:2024-06-26/B-/v1",
+    "curve_version": "v1",
+    "interpolation_method": "log_linear",
+    "fallback_policy": "nearest_grade"
+  },
+  "model": "TF_LATTICE",
+  "seed": 20240101,
+  "model_version": "cb-1.0.0",
+  "options": { "lattice_steps": 1000 },
+  "input_hash": "a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00",
+  "metadata": { "issuer": "예시바이오", "instrument_name": "예시바이오 3CB", "requested_by": 7 }
+}
