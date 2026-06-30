@@ -17,6 +17,9 @@ import com.fairvalue.error.ValidationException
 import com.fairvalue.repository.YieldCurvePointRepository
 import com.fairvalue.repository.YieldCurveUploadRepository
 import com.fairvalue.security.AuthPrincipal
+import jakarta.persistence.criteria.Predicate
+import org.springframework.data.domain.Sort
+import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -88,8 +91,19 @@ class CurveService(
     }
 
     @Transactional(readOnly = true)
-    fun list(caller: AuthPrincipal, kind: CurveKind?, grade: String?, asOf: java.time.LocalDate?): List<CurveUploadDto> =
-        uploadRepo.search(caller.orgId, kind, grade?.takeIf { it.isNotBlank() }, asOf).map { CurveUploadDto.from(it) }
+    fun list(caller: AuthPrincipal, kind: CurveKind?, grade: String?, asOf: java.time.LocalDate?): List<CurveUploadDto> {
+        // ★ null 필터는 WHERE 절에서 제외(IS NULL OR 패턴 제거 → PG 타입추론 에러 원천 차단).
+        val spec = Specification<YieldCurveUpload> { root, _, cb ->
+            val ps = mutableListOf<Predicate>()
+            ps += cb.equal(root.get<Long>("orgId"), caller.orgId)
+            kind?.let { ps += cb.equal(root.get<CurveKind>("kind"), it) }
+            grade?.takeIf { it.isNotBlank() }?.let { ps += cb.equal(root.get<String>("grade"), it) }
+            asOf?.let { ps += cb.equal(root.get<java.time.LocalDate>("asOf"), it) }
+            cb.and(*ps.toTypedArray())
+        }
+        val sort = Sort.by(Sort.Order.desc("asOf"), Sort.Order.asc("kind"), Sort.Order.desc("version"))
+        return uploadRepo.findAll(spec, sort).map { CurveUploadDto.from(it) }
+    }
 
     @Transactional(readOnly = true)
     fun getDetail(caller: AuthPrincipal, id: Long): CurveDetailDto {

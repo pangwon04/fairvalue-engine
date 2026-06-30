@@ -4,34 +4,24 @@ import com.fairvalue.domain.CurveKind
 import com.fairvalue.domain.YieldCurveUpload
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.LocalDate
 
 /**
  * 조직 격리: 조회는 orgId 로 스코프. grade NULL(무위험)은 IS NULL 로 정확히 매칭.
+ *
+ * 목록(GET /curves)은 JpaSpecificationExecutor 동적 쿼리로 처리한다(CurveService.list).
+ *   - 과거 ':param IS NULL OR ...' @Query 는 PostgreSQL 이 null enum 파라미터의 타입을
+ *     추론하지 못해 "could not determine data type of parameter" 로 거부했다.
+ *   - Specification 은 null 필터를 WHERE 절에서 아예 제외하므로 untyped 파라미터가 없다.
  */
-interface YieldCurveUploadRepository : JpaRepository<YieldCurveUpload, Long> {
+interface YieldCurveUploadRepository :
+    JpaRepository<YieldCurveUpload, Long>,
+    JpaSpecificationExecutor<YieldCurveUpload> {
 
     fun findByIdAndOrgId(id: Long, orgId: Long): YieldCurveUpload?
-
-    /** 목록(필터: kind/grade/asOf 선택). null 파라미터는 해당 필터 미적용. */
-    @Query(
-        """
-        SELECT u FROM YieldCurveUpload u
-        WHERE u.orgId = :orgId
-          AND (:kind IS NULL OR u.kind = :kind)
-          AND (:asOf IS NULL OR u.asOf = :asOf)
-          AND (:grade IS NULL OR u.grade = :grade)
-        ORDER BY u.asOf DESC, u.kind ASC, u.version DESC
-        """,
-    )
-    fun search(
-        @Param("orgId") orgId: Long,
-        @Param("kind") kind: CurveKind?,
-        @Param("grade") grade: String?,
-        @Param("asOf") asOf: LocalDate?,
-    ): List<YieldCurveUpload>
 
     /** (org,kind,grade,as_of) 의 최대 version. grade NULL 은 IS NULL 로 정확 매칭. 없으면 0. */
     @Query(
