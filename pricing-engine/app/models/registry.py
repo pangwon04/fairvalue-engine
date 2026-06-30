@@ -37,7 +37,17 @@ LIBRARY = ModelLibrary()
 
 def _register_defaults() -> None:
     from .cb_calculator import calculate_cb
-    LIBRARY.register("TF_LATTICE", calculate_cb)
+    from .rcps_calculator import calculate_rcps
+
+    def tf_lattice_dispatch(ctx: dict) -> dict:
+        """TF_LATTICE 모델은 instrument_type 으로 calculator 분기(CB / RCPS)."""
+        if ctx.get("instrument_type") == "RCPS":
+            return calculate_rcps(ctx)
+        return calculate_cb(ctx)
+
+    LIBRARY.register("TF_LATTICE", tf_lattice_dispatch)
+    LIBRARY.register("LATTICE", tf_lattice_dispatch)   # RCPS 보고서 model="LATTICE"
+    LIBRARY.register("RCPS_TF_LATTICE", calculate_rcps)
 
 
 _register_defaults()

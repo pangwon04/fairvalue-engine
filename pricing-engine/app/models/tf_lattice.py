@@ -146,3 +146,76 @@ def tf_value(spec: CBLatticeSpec) -> float:
         Vb, Ve = nVb, nVe
 
     return Vb[0] + Ve[0]
+
+
+def tf_value_split(spec: CBLatticeSpec, rf_steps=None, rd_steps=None) -> tuple[float, float]:
+    """TF 격자 루트의 (Vb, Ve) 분리 반환 — RCPS host(우선주 cashflow)=Vb, 내재파생(전환)=Ve.
+
+    rf_steps/rd_steps 가 주어지면 스텝별 forward rate(커브 term-structure)로 할인·드리프트한다
+    (길이 steps). 없으면 spec.rf/spec.rd 평탄 사용. u/d 는 sigma·dt 로 고정.
+    """
+    n = spec.steps
+    dt = spec.t_years / n
+    u = math.exp(spec.sigma * math.sqrt(dt))
+    d = 1.0 / u
+    u2 = u * u
+    cpn = (spec.coupon_per_year / spec.freq) if spec.freq > 0 else 0.0
+    coupon_at = _coupon_steps(spec, dt)
+
+    def rf_at(step):
+        return rf_steps[step] if rf_steps is not None else spec.rf
+
+    def rd_at(step):
+        return rd_steps[step] if rd_steps is not None else spec.rd
+
+    Vb = [0.0] * (n + 1)
+    Ve = [0.0] * (n + 1)
+    s = spec.s0 * (d ** n)
+    for j in range(n + 1):
+        redemption = spec.face + cpn
+        conv = spec.conv_ratio * s if spec.conv_enabled else -1.0
+        if conv >= redemption:
+            Ve[j] = conv
+            Vb[j] = 0.0
+        else:
+            Vb[j] = redemption
+            Ve[j] = 0.0
+        s *= u2
+
+    for step in range(n - 1, -1, -1):
+        rf = rf_at(step)
+        rd = rd_at(step)
+        p = (math.exp((rf - spec.q) * dt) - d) / (u - d)
+        disc_e = math.exp(-rf * dt)
+        disc_b = math.exp(-rd * dt)
+        nVb = [0.0] * (step + 1)
+        nVe = [0.0] * (step + 1)
+        t = step * dt
+        s = spec.s0 * (d ** step)
+        for j in range(step + 1):
+            cb = disc_b * (p * Vb[j + 1] + (1 - p) * Vb[j])
+            ce = disc_e * (p * Ve[j + 1] + (1 - p) * Ve[j])
+            if step in coupon_at:
+                cb += cpn
+            val_b, val_e = cb, ce
+            if spec.conv_enabled and t >= spec.conv_start_t - 1e-12:
+                conv = spec.conv_ratio * s
+                if conv >= val_b + val_e:
+                    val_b, val_e = 0.0, conv
+            if spec.put_enabled and t >= spec.put_start_t - 1e-12:
+                if spec.put_price > val_b + val_e:
+                    val_b, val_e = spec.put_price, 0.0
+            if spec.call_enabled and t >= spec.call_start_t - 1e-12:
+                cur = val_b + val_e
+                if cur > spec.call_price:
+                    conv = spec.conv_ratio * s if spec.conv_enabled else 0.0
+                    if conv >= spec.call_price:
+                        val_b, val_e = 0.0, conv
+                    else:
+                        val_b, val_e = spec.call_price, 0.0
+            nVb[j] = val_b
+            nVe[j] = val_e
+            s *= u2
+        Vb, Ve = nVb, nVe
+
+    return Vb[0], Ve[0]
