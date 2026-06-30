@@ -1,6 +1,7 @@
 package com.fairvalue
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan
 import org.springframework.boot.runApplication
 
 /**
@@ -13,6 +14,7 @@ import org.springframework.boot.runApplication
  * 는 Spring 빈이 아니므로 영향을 받지 않는다.
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan
 class FairValueApplication
 
 fun main(args: Array<String>) {

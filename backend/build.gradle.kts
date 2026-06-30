@@ -23,6 +23,12 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-security")
+
+    // --- JWT (jjwt 0.12.x) ---
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 
     // --- Jackson (Kotlin 모듈) — 버전은 Spring Boot BOM 이 관리 ---
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -38,6 +44,9 @@ dependencies {
     // --- 테스트 (기존 InputHashTest 유지) ---
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.testcontainers:postgresql:1.20.1")
+    testImplementation("org.testcontainers:junit-jupiter:1.20.1")
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         // JUnit4(vintage) 제외 — 프로젝트는 JUnit5 만 사용
         exclude(group = "org.junit.vintage", module = "junit-vintage-engine")

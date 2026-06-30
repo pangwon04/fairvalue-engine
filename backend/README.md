@@ -59,6 +59,43 @@ cd backend && ./gradlew build      # 컴파일 + InputHashTest (DB 불필요)
 > DB 가 필요한 통합테스트는 이 단계에 포함하지 않습니다(스캐폴딩).
 > `gradle-wrapper.jar` 부재 시 CI 가 자동으로 `gradle wrapper` 를 실행합니다.
 
+## Auth / Org / RBAC (Phase 1-B-1)
+
+JWT 기반 인증 + 조직 격리 + 5역할 RBAC. openapi.yaml 의 Auth/Org 계약을 따른다.
+
+```bash
+# 1) 가입 — org_code 가 신규면 조직 생성 + 첫 사용자 ORG_ADMIN
+curl -X POST localhost:8080/auth/signup -H 'Content-Type: application/json' \
+  -d '{"email":"admin@acme.com","pw":"pw12345","org_code":"ACME"}'
+#   → 201 {"token":"...","user":{"id":1,"email":"admin@acme.com","role":"ORG_ADMIN","organization_id":1}}
+
+# 2) 같은 org_code 로 후속 가입 → VALUATOR
+curl -X POST localhost:8080/auth/signup -H 'Content-Type: application/json' \
+  -d '{"email":"val@acme.com","pw":"pw12345","org_code":"ACME"}'   # role: VALUATOR
+
+# 3) 로그인 → JWT
+TOKEN=$(curl -s -X POST localhost:8080/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"admin@acme.com","pw":"pw12345"}' | jq -r .token)
+
+# 4) 관리자 — 조직 내 사용자 목록(본인 조직만)
+curl localhost:8080/admin/users -H "Authorization: Bearer $TOKEN"
+
+# 5) 역할 변경(같은 조직 + ORG_ADMIN)
+curl -X PATCH localhost:8080/admin/users/2 -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"role":"AUDITOR"}'
+
+# 6) 현재 사용자
+curl localhost:8080/me -H "Authorization: Bearer $TOKEN"
+```
+
+**조직 격리 차단 확인**: 다른 조직(`org_code:"BETA"`)으로 가입한 토큰으로 `GET /admin/users`
+를 호출하면 BETA 사용자만 반환되며 ACME 사용자는 보이지 않는다. ACME 사용자 id 로
+`PATCH /admin/users/{id}` 를 호출하면 404(누출 차단)다. 미인증 401, VIEWER 의 `/admin/**` 403.
+
+> 에러 본문은 openapi 공통 `Error` 스키마 `{code,message,fields[]}` 형식(401=E401, 403=E403,
+> 404=E404, 409=E409, 422=E422).
+> `JWT_SECRET` 는 운영에서 반드시 env 로 주입한다(기본값은 개발 전용).
+
 ## DB 스키마 (V1)
 
 Flyway `V1__init.sql` 이 생성하는 것:

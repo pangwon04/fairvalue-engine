@@ -36,8 +36,24 @@ jobs:
         run: pytest tests -v
 
   kotlin:
-    name: kotlin — InputHash 교차검증
+    name: kotlin — InputHash 교차검증 + Auth 통합테스트
     runs-on: ubuntu-latest
+    # 통합테스트(Testcontainers)는 ubuntu-latest 의 Docker 로 postgres 를 자동 기동한다.
+    # 추가로 service 컨테이너도 제공해, env(DB_URL 등)로도 접속 가능하게 둔다.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fairvalue
+          POSTGRES_USER: fairvalue
+          POSTGRES_PASSWORD: fairvalue
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U fairvalue"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -51,8 +67,13 @@ jobs:
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
             gradle wrapper --gradle-version 8.7
           fi
-      - name: gradle test (InputHash.kt 컴파일 + Python 교차해시)
+      - name: gradle test (InputHash 교차해시 + Auth 통합테스트)
         working-directory: backend
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/fairvalue
+          DB_USER: fairvalue
+          DB_PASSWORD: fairvalue
+          JWT_SECRET: ci-only-secret-long-enough-32bytes-min!!
         run: |
           chmod +x ./gradlew
           ./gradlew test --no-daemon
