@@ -153,6 +153,33 @@ curl localhost:8080/jobs/1/result -H "Authorization: Bearer $TOKEN"   # placehol
 - **격리·권한**: 실행은 VALUATOR 이상, 조회는 인증된 전원. Job/result 는 org_id 격리(타 조직 404). terms 미저장 시 409.
 - **placeholder 결과 형식**은 `pricing-result.schema.json` 1:1(표준 component key 12종)이라 Dummy→Real 교체 시 형식 불변.
 
+## Curve 업로드·자동매핑 (Phase 2-A)
+
+수익률 커브를 업로드·저장·버전관리하고 (as_of, grade, kind)로 자동매핑한다. **계산(보간/부트스트랩)은 2-B**.
+
+```bash
+# 업로드(CURVE_MANAGER/ORG_ADMIN) — JSON 본문
+curl -X POST localhost:8080/curves -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"as_of":"2024-06-26","kind":"RISK_FREE","source":"manual",
+       "points":[{"tenor_years":0.25,"rate_percent":3.41},{"tenor_years":1,"rate_percent":3.35},{"tenor_years":3,"rate_percent":3.30}]}'
+#   → 201 {"upload_id":1,"validation":[]}
+
+# 업로드 — multipart CSV (openapi 형식: as_of,kind,grade,file)
+curl -X POST localhost:8080/curves -H "Authorization: Bearer $TOKEN" \
+  -F as_of=2024-06-26 -F kind=CREDIT -F grade=BB -F file=@curve_credit.csv
+
+curl 'localhost:8080/curves?kind=RISK_FREE&as_of=2024-06-26' -H "Authorization: Bearer $TOKEN"  # 목록(버전·출처)
+curl localhost:8080/curves/1 -H "Authorization: Bearer $TOKEN"                                   # 단건(포인트 포함)
+```
+
+- **검증(422)**: 필수 메타(as_of/kind), 신용커브 grade 필수, tenor 오름차순·중복 금지, 금리 숫자. 위반은 `Error{code,message,fields[]}`.
+- **버전**: 같은 `(org,kind,grade,as_of)` 재업로드 시 `version` 자동 증가(이력 보존, 덮어쓰기 금지).
+- **자동매핑**(`CurveMappingService`): `(as_of,grade,kind)` 일치 중 **최신 version** 선택(조회 로직만; 평가 resolve 연결은 Phase 3).
+- **격리·권한**: 모든 커브 org_id 격리(타 조직 404). 업로드=CURVE_MANAGER/ORG_ADMIN, 조회=인증 전원.
+- `origin`(MANUAL/UPLOAD/BOOTSTRAP)·`interpolation_method` 컬럼은 2-B(우선순위·보간)에서 사용.
+
+> openapi 차이: `GET /curves` 는 이번에 **목록**으로 구현(openapi 의 단일 `{points,source}` 와 차이), `GET /curves/{id}` 는 추가 엔드포인트 — 다음 단계에 openapi 반영 예정.
+
 ## DB 스키마 (V1)
 
 Flyway `V1__init.sql` 이 생성하는 것:
