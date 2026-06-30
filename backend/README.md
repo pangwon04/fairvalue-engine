@@ -96,6 +96,38 @@ curl localhost:8080/me -H "Authorization: Bearer $TOKEN"
 > 404=E404, 409=E409, 422=E422).
 > `JWT_SECRET` 는 운영에서 반드시 env 로 주입한다(기본값은 개발 전용).
 
+## Instrument / Terms (Phase 1-B-2)
+
+상품(Instrument) CRUD + 계약조건(rawForm draft) 저장·검증. 모두 조직 격리.
+
+```bash
+# 프로젝트 생성(VALUATOR+)
+curl -X POST localhost:8080/projects -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"2024 평가"}'
+
+# 상품 생성(type ∈ RCPS/CPS/CB/EB/BW/SO/CSO, status=DRAFT)
+curl -X POST localhost:8080/instruments -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"type":"CB","name":"예시 3CB","issuer":"예시바이오"}'
+
+# 계약조건(rawForm draft) 저장 + 검증
+curl -X PUT localhost:8080/instruments/1/terms -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{ "valuation_date":"2024-06-26", "terms":{...}, "rights":{...}, "market":{...}, "curves":{"risk_free_ref":1,"credit_ref":2}, "model":"TF_LATTICE", "seed":20240101 }'
+#   → 200 {"saved":true,"has_errors":false,"validation":[]}
+
+curl localhost:8080/instruments/1/terms -H "Authorization: Bearer $TOKEN"   # 저장된 draft 조회
+```
+
+**rawForm 검증(2단계, shared 단일 출처)**:
+
+1. **구조** — `classpath:/contracts/valuation-context.draft.schema.json`(build 시 `shared/schemas` 에서 복사)에 대해
+   networknt JSON Schema(2020-12) 검증. 필수 필드·타입·enum 위반은 `severity=error`.
+2. **룰** — `classpath:/contracts/productSchemas/{type}.json`(build 시 `frontend/src/forms` 에서 복사)의
+   `required`(showWhen/enableWhen 게이팅)와 `validations[].rule`(= `validation-rules.ts` 표준 20종)을 rawForm bind 경로에 적용.
+
+검증 기준은 **shared/frontend 의 동일 파일을 복사만** 하므로 임의 규칙이 추가되지 않는다. error 가 있어도 항상 저장(`saved=true`)하되
+`has_errors=true` 로 표시하고 `instruments.status` 는 `DRAFT` 로 둔다. **커브는 `*_ref` 만 저장하며 resolve(포인트 치환)는 하지 않는다(1-B-3).**
+`parity` 키가 입력에 있으면 warning + 저장본에서 제거(패치 2.1). 쓰기(상품 생성·terms 저장)는 VALUATOR 이상, AUDITOR/VIEWER 는 읽기만.
+
 ## DB 스키마 (V1)
 
 Flyway `V1__init.sql` 이 생성하는 것:

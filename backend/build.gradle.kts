@@ -33,6 +33,9 @@ dependencies {
     // --- Jackson (Kotlin 모듈) — 버전은 Spring Boot BOM 이 관리 ---
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 
+    // --- JSON Schema 검증 (rawForm draft 구조 검증, 2020-12) ---
+    implementation("com.networknt:json-schema-validator:1.5.1")
+
     // --- DB / 마이그레이션 ---
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
@@ -50,6 +53,21 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         // JUnit4(vintage) 제외 — 프로젝트는 JUnit5 만 사용
         exclude(group = "org.junit.vintage", module = "junit-vintage-engine")
+    }
+}
+
+// shared 단일 출처 동기화: 계약 검증 기준 파일을 backend 클래스패스로 "복사만" 한다.
+//   - shared/schemas/valuation-context.draft.schema.json → classpath:/contracts/
+//   - frontend/src/forms/productSchemas/*.json           → classpath:/contracts/productSchemas/
+// 원본(shared·frontend)은 수정하지 않는다. 검증기는 이 복사본을 읽어 drift 를 방지한다.
+tasks.processResources {
+    from("../shared/schemas") {
+        include("valuation-context.draft.schema.json")
+        into("contracts")
+    }
+    from("../frontend/src/forms/productSchemas") {
+        include("*.json")
+        into("contracts/productSchemas")
     }
 }
 
