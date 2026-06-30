@@ -1,0 +1,32 @@
+{
+  "_note": "RCPS 2024YE(2024-12-31) 입력 ValuationContext. rcps_real_cases.json/rcps_real_2024_ye 대응. 동일 상품 2시점 교차검증용(엔진 불변, 입력만 교체). C 모델(측도 분리, q_conv=우선배당률 3%). ★검증정책: total은 정답지(17295) ±2% BLOCKING(-0.93%). host/embedded 분할은 보고서 독점규약(내재 r_eff 27~34%, 명세 외)이라 self-consistency만 검증, 정답지(host 5560/embedded 11735) 대비차는 진단 print.",
+  "instrument_type": "RCPS",
+  "valuation_date": "2024-12-31",
+  "instrument_id": 4001,
+  "job_id": 3,
+  "model": "TF_LATTICE",
+  "seed": 20240101,
+  "model_version": "rcps-1.0.0",
+  "terms": {
+    "issue_date": "2022-10-13",
+    "maturity_date": "2032-10-12",
+    "issue_price": 15000,
+    "face_value": 15000,
+    "dividend_preferred_rate": 0.03,
+    "guaranteed_yield": 0.08
+  },
+  "rights": {
+    "conversion": { "strike": 15000, "ratio": 1, "start": "2022-11-13", "end": "2032-10-12" },
+    "redemption": { "put": { "enabled": true, "yield": 0.08, "start": "2026-04-13" } },
+    "refixing": { "enabled": false }
+  },
+  "market": { "spot": 17134, "volatility": 0.5016, "dividend_yield": 0.0 },
+  "options": { "lattice_steps": 94, "node_interval_days": 30, "use_term_structure": true },
+  "curves": {
+    "risk_free_curve": [[0.25,2.86],[0.5,2.8],[0.75,2.71],[1.0,2.71],[1.5,2.78],[2.0,2.77],[2.5,2.72],[3.0,2.6],[4.0,2.82],[5.0,2.77],[7.0,2.99],[10.0,2.87]],
+    "credit_curve": [[0.25,12.09],[0.5,13.11],[0.75,13.94],[1.0,14.54],[1.5,15.59],[2.0,16.78],[2.5,17.69],[3.0,18.41],[4.0,19.41],[5.0,19.9],[7.0,20.9],[10.0,21.72]],
+    "curve_source": "KISPRICING_2024-12-31",
+    "curve_version": "v1",
+    "interpolation_method": "LINEAR"
+  }
+}
