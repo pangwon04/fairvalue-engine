@@ -180,6 +180,20 @@ curl localhost:8080/curves/1 -H "Authorization: Bearer $TOKEN"                  
 
 > openapi 차이: `GET /curves` 는 이번에 **목록**으로 구현(openapi 의 단일 `{points,source}` 와 차이), `GET /curves/{id}` 는 추가 엔드포인트 — 다음 단계에 openapi 반영 예정.
 
+## Curve 계산·Bootstrapping·우선순위 (Phase 2-B)
+
+2-A 에서 저장한 커브로 **zero/df/forward 계산·보간**하고, par yield 를 **Bootstrapping** 해 zero/df 를 만든다(round-trip 검증). Phase 3 엔진의 할인 소스.
+
+- **복리 규약**(고정): 이산 연율 — `df(t) = 1/(1+z)^t`, `z = rate_percent/100`. (`InterpolatedCurve` 주석)
+- **보간**: `LINEAR`(zero 선형) / `LOG_LINEAR`(ln(df) 선형). 범위 밖은 **평탄외삽**(끝점 rate 고정).
+- **forward**: `f(t1,t2)=(df(t1)/df(t2))^(1/(t2-t1))-1`. 음수면 **경고**(`curve.warnings()`), 차단 아님.
+- **Bootstrapping**(`Bootstrapper`, 메모리 계산): 액면 1·par 채권(가격 1)·accrual(쿠폰=par×Δt) 가정.
+  `df_i = (1 - c_i·Σ_{j<i}Δt_j·df_j)/(1 + c_i·Δt_i)`, 역산 `par_i=(1-df_i)/Σ_{j≤i}Δt_j·df_j` → **round-trip 1e-9 이내**(합성+실제 6커브).
+- **우선순위**(`CurveMappingService.findByPriority`): 같은 `(org,kind,grade,as_of)` 중 **origin MANUAL>UPLOAD>BOOTSTRAP**, 동일 origin 내 최신 version. (2-A `findActiveCurve` 는 origin 무관 최신 — 불변)
+- **계산 자료형**: double, 비교 허용오차 명시(round-trip 1e-9, sanity 1e-6). DB 변경 없음(**V5 불필요**; origin 컬럼은 V4).
+
+> 검증 자료: `golden-values/curves/*.csv`(실제 보고서 커브 6개) — round-trip(빡빡) + sanity(느슨: df∈(0,1]·|zero|<100%, 정확값 미요구).
+
 ## DB 스키마 (V1)
 
 Flyway `V1__init.sql` 이 생성하는 것:

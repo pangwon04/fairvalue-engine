@@ -1,0 +1,17 @@
+# as_of=2023-12-31
+# kind=RISK_FREE
+# source=KISPRICING
+# interpolation_method=LINEAR
+tenor_years,rate_percent
+0.25,3.39
+0.5,3.48
+0.75,3.48
+1.0,3.48
+1.5,3.41
+2.0,3.25
+2.5,3.18
+3.0,3.15
+4.0,3.2
+5.0,3.16
+7.0,3.22
+10.0,3.18

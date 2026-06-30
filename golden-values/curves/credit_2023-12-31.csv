@@ -1,0 +1,18 @@
+# as_of=2023-12-31
+# kind=CREDIT
+# grade=B-
+# source=KISPRICING
+# interpolation_method=LINEAR
+tenor_years,rate_percent
+0.25,13.32
+0.5,14.45
+0.75,15.34
+1.0,16.02
+1.5,16.99
+2.0,18.02
+2.5,18.84
+3.0,19.64
+4.0,20.4
+5.0,20.87
+7.0,21.78
+10.0,22.55
