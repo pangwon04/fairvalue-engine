@@ -34,7 +34,8 @@ class PricingJobEntity(
     @Column(name = "status", nullable = false, columnDefinition = "job_status")
     var status: JobStatus = JobStatus.QUEUED,
 
-    @Column(name = "input_hash")
+    // DB 는 CHAR(64)(bpchar) — 의도적 고정(^[a-f0-9]{64}$ CHECK). 엔티티를 DB 에 맞춘다.
+    @Column(name = "input_hash", columnDefinition = "char(64)", length = 64)
     var inputHash: String? = null,
 
     @Column(name = "seed")
