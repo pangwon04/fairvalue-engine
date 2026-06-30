@@ -58,7 +58,7 @@ class BootstrapRoundTripTest {
     }
 
     @Test
-    fun `실제 커브 sanity — df in (0,1], zero·forward 부호·범위 합리(정확값 미요구)`() {
+    fun `실제 커브 sanity — df 범위 0 초과 1 이하, zero·forward 부호·범위 합리(정확값 미요구)`() {
         for (f in listOf("risk_free_2024-12-31.csv", "credit_2024-12-31.csv")) {
             val par = loadCsv(f)
             val df = Bootstrapper.bootstrap(par)
