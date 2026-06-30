@@ -14,12 +14,13 @@ import org.springframework.stereotype.Component
  *   - instrument_type / model / seed / model_version / options 만 주입한다.
  *   - input_hash 는 더미가 아니라 ★진짜: 기존 InputHash 로직으로 산출한다.
  *
- * Phase 3 에서 RealContextResolver 로 교체(이 클래스 대체). 호출부 불변.
+ * Phase 4-α 에서 RealContextResolver(@Primary)로 대체됨. 이 더미는 빈으로 남겨 두되
+ * 주입은 Real 이 우선한다(테스트/대체용). 호출부 불변.
  */
 @Component
 class DummyContextResolver(private val mapper: ObjectMapper) : ContextResolver {
 
-    override fun resolve(rawForm: JsonNode, trigger: PricingTrigger, type: InstrumentType): ResolvedContext {
+    override fun resolve(rawForm: JsonNode, trigger: PricingTrigger, type: InstrumentType, orgId: Long): ResolvedContext {
         val ctx: ObjectNode = if (rawForm is ObjectNode) rawForm.deepCopy() else mapper.createObjectNode()
 
         // 식별·모형 주입(사용자 입력보다 trigger·경로 우선).

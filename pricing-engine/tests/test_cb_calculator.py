@@ -76,8 +76,8 @@ def test_g5_self_consistency_golden_nonblocking():
 
     # 통과 기준 = self-consistency (golden 절대값은 단언하지 않음)
     s = sum((rc.get(k) or 0.0) for k in SUM_KEYS)
-    assert abs(s - rc["total_fair_value"]) <= 0.01            # Σ=total
+    assert abs(s - rc["total_fair_value"]) <= 0.01
     assert abs(res["total_fair_value"] - rc["total_fair_value"]) <= 0.01
     assert rc["bond_value"] > 0 and rc["conversion_option_value"] >= 0
-    for k in NEG_KEYS:                                        # 부호규칙
+    for k in NEG_KEYS:
         assert (rc.get(k) or 0.0) <= 1e-9

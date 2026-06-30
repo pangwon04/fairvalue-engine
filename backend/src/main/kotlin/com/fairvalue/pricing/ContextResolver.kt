@@ -7,10 +7,11 @@ import com.fasterxml.jackson.databind.JsonNode
 /**
  * rawForm(draft) + trigger → ResolvedContext.
  *
- * Phase 3 교체 지점: RealContextResolver 가 커브 *_ref → 포인트 배열 스냅샷,
- * asset_id → market.{spot,volatility,dividend_yield} 보강(수동값 우선)을 수행한다.
- * 호출부(JobService)는 이 인터페이스에만 의존하므로 교체 시 흐름·테스트 불변.
+ * Phase 4-α: RealContextResolver 가 커브 *_ref → 포인트 배열 스냅샷으로 resolve 한다.
+ *   - orgId 는 커브 조회의 조직 격리 기준(타 조직 커브 resolve 불가).
+ *   - 호출부(JobService)는 caller.orgId 를 전달한다.
+ * (asset_id → market.{spot,volatility,dividend_yield} 보강은 이후 묶음)
  */
 interface ContextResolver {
-    fun resolve(rawForm: JsonNode, trigger: PricingTrigger, type: InstrumentType): ResolvedContext
+    fun resolve(rawForm: JsonNode, trigger: PricingTrigger, type: InstrumentType, orgId: Long): ResolvedContext
 }

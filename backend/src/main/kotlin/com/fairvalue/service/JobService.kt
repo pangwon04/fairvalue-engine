@@ -46,7 +46,7 @@ class JobService(
             ?: throw ConflictException("계약조건(terms)이 저장되지 않았습니다.")
 
         val rawForm = mapper.readTree(terms.termsJson)
-        val ctx = resolver.resolve(rawForm, trigger, instrument.type)
+        val ctx = resolver.resolve(rawForm, trigger, instrument.type, caller.orgId)
 
         // 캐시: 같은 (org, instrument, input_hash) 의 DONE Job 이 있으면 재사용.
         jobRepo.findFirstByOrgIdAndInstrumentIdAndInputHashAndStatusOrderByIdAsc(

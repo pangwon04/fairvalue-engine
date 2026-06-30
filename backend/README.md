@@ -194,6 +194,22 @@ curl localhost:8080/curves/1 -H "Authorization: Bearer $TOKEN"                  
 
 > 검증 자료: `golden-values/curves/*.csv`(실제 보고서 커브 6개) — round-trip(빡빡) + sanity(느슨: df∈(0,1]·|zero|<100%, 정확값 미요구).
 
+## resolve 결선 (Phase 4-α)
+
+평가 실행 시 `RealContextResolver`(1-B-3 Dummy 대체, `@Primary`)가 rawForm 의
+`curves.risk_free_ref`/`credit_ref` 를 Phase 2 저장 커브로 **resolve** 한다:
+
+- `*_ref`(upload_id) → 그 커브 직접 로드(org 스코프). ref 없으면 우선순위 selector
+  (`findByPriority`: MANUAL>UPLOAD>BOOTSTRAP, 최신 version)로 (as_of,kind,grade) 자동 선택.
+- ValuationContext 의 `curves.risk_free_curve`/`credit_curve` 를 **포인트 스냅샷**(+ curve_source·curve_version·interpolation_method)으로 채운다(명세 §10).
+- 조직 격리: 타 조직 커브 ref 는 resolve 불가 → 404. 매칭 실패도 404.
+- **input_hash**: 정규화가 이미 `*_curve`·`curve_version` 을 포함하므로(코드 불변),
+  같은 ref·같은 version = 같은 hash, 커브 변경 = hash 변경(재현성·캐시 일관).
+- 엔진 결선: pricing-engine `cb_calculator._rates_from_curves()` 가 이 스냅샷을 만기 T 시점
+  zero rate 로 보간해 rf/rd 산출(평탄근사 → 실커브). Kotlin→Python 실 HTTP 호출은 다음 묶음(RCPS).
+
+> resolve 호출은 `JobService.price` 내 1줄(`caller.orgId` 전달)뿐 — 흐름(QUEUED→RUNNING→DONE)·캐시 불변.
+
 ## DB 스키마 (V1)
 
 Flyway `V1__init.sql` 이 생성하는 것:

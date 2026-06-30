@@ -95,10 +95,29 @@ class PricingJobIntegrationTest {
         "stock_option_value", "conditional_option_value", "dilution_effect", "total_fair_value",
     )
 
-    /** CB 상품 생성 + terms 저장 후 instrumentId. */
+    /** 커브 업로드(Phase 4-α resolve 가 실제 커브를 요구). upload_id 반환. */
+    private fun uploadCurve(token: String, kind: String): Long {
+        val body = mutableMapOf<String, Any>(
+            "as_of" to "2024-06-26", "kind" to kind, "origin" to "UPLOAD",
+            "points" to listOf(
+                mapOf("tenor_years" to 1, "rate_percent" to 3.35),
+                mapOf("tenor_years" to 3, "rate_percent" to if (kind == "CREDIT") 15.02 else 3.30),
+            ),
+        )
+        if (kind == "CREDIT") body["grade"] = "BB"
+        val res = post("/curves", body, token)
+        assertEquals(201, res.statusCode(), res.body())
+        return mapper.readTree(res.body()).get("upload_id").asLong()
+    }
+
+    /** CB 상품 생성 + (실제 커브 업로드 후 ref 로) terms 저장. instrumentId 반환. */
     private fun cbWithTerms(token: String): Long {
         val id = createInstrument(token, "CB")
-        assertEquals(200, put("/instruments/$id/terms", validCb(), token).statusCode())
+        val rf = uploadCurve(token, "RISK_FREE")
+        val cr = uploadCurve(token, "CREDIT")
+        val terms = validCb().toMutableMap()
+        terms["curves"] = mapOf("risk_free_ref" to rf, "credit_ref" to cr) // 실제 upload_id 로 resolve 가능
+        assertEquals(200, put("/instruments/$id/terms", terms, token).statusCode())
         return id
     }
 

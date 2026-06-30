@@ -37,22 +37,31 @@ def _year_frac(d0: date, d1: date) -> float:
     return (d1 - d0).days / 365.25
 
 
-def _interp_curve_last(curve: list, t: float) -> float:
-    """평탄 근사: 최장 만기 근처 값(요청 t 이상 첫 포인트, 없으면 마지막). %단위 반환."""
+def _interp_curve_at(curve: list, t: float) -> float:
+    """★ 커브 결선(Phase 4-α): [[tenor, rate_percent], ...] 를 t 시점 zero rate 로 선형 보간.
+    범위 밖은 평탄외삽(끝점 고정). %단위 반환. (Phase 2 LINEAR 보간과 동일 정의)"""
     if not curve:
         return 0.0
-    for tenor, rate in curve:
-        if tenor >= t - 1e-9:
-            return float(rate)
-    return float(curve[-1][1])
+    pts = sorted((float(a), float(b)) for a, b in curve)
+    if t <= pts[0][0]:
+        return pts[0][1]
+    if t >= pts[-1][0]:
+        return pts[-1][1]
+    for i in range(len(pts) - 1):
+        t0, r0 = pts[i]
+        t1, r1 = pts[i + 1]
+        if t0 <= t <= t1:
+            return r0 + (r1 - r0) * (t - t0) / (t1 - t0)
+    return pts[-1][1]
 
 
 def _rates_from_curves(ctx: dict, t_years: float) -> tuple[float, float]:
-    """★ 커브 결선점. 지금은 평탄 근사. 반환 (rf_cont, rd_cont) decimal.
-    rf = risk_free_curve, rd = credit_curve(위험 전체수익률). 둘 다 연속복리로 취급."""
+    """★ 커브 결선점. resolve 로 채워진 커브 스냅샷(risk_free_curve/credit_curve)을
+    t(만기) 시점 zero rate 로 보간해 rf/rd 산출. 둘 다 연속복리 연율로 취급.
+    rf = risk_free_curve, rd = credit_curve(위험 전체수익률). credit 없으면 rf 로 폴백."""
     curves = ctx.get("curves", {})
-    rf_pct = _interp_curve_last(curves.get("risk_free_curve", []), t_years)
-    rd_pct = _interp_curve_last(curves.get("credit_curve", []) or [], t_years)
+    rf_pct = _interp_curve_at(curves.get("risk_free_curve", []), t_years)
+    rd_pct = _interp_curve_at(curves.get("credit_curve", []) or [], t_years)
     if rd_pct == 0.0:
         rd_pct = rf_pct
     return rf_pct / 100.0, rd_pct / 100.0
