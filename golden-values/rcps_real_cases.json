@@ -1,0 +1,385 @@
+{
+  "_meta": {
+    "source": "외부 상용 평가보고서(RCPS) — 식별정보 제외, 검증용 수치만",
+    "instrument_type": "RCPS",
+    "model": "Tsiveriotis-Fernandes (Lattice, equity/bond cashflow-weighted discounting)",
+    "purpose": "Phase 3 RCPS 엔진 검증용 answer-key. 동일 상품을 4개 평가시점에 평가한 케이스.",
+    "tolerance": {
+      "relative_per_unit": 0.01,
+      "note": "비공개 상용엔진과 독립구현 차이 감안, 주당가치 1% 이내 일치를 통과로 본다"
+    },
+    "report_decomposition_note": "보고서는 RCPS를 host(주계약)+내재파생 2분할로 제시. 우리 표준 component(preferred_share_value/conversion_option_value/redemption_option_value...)는 더 세분. 보고서가 전환/상환을 따로 주지 않으므로, 검증 1차 기준은 host=preferred_share_value, 내재파생=Σ(파생 components)로 둔다.",
+    "common_terms": {
+      "issue_date": "2022-10-13",
+      "maturity_date": "2032-10-12",
+      "face_total": 15000000000,
+      "issue_price_per_share": 15000,
+      "conversion_price": 15000,
+      "conversion_ratio": "1:1",
+      "conversion_shares": 1000000,
+      "conversion_period": {
+        "start": "2022-11-13",
+        "end": "2032-10-12"
+      },
+      "dividend_preferred_rate": 0.03,
+      "guaranteed_yield_put": 0.08,
+      "put_period": {
+        "start": "2026-04-13",
+        "end": "2032-10-12"
+      },
+      "put_redemption": "연복리 8% 만기보장수익률 적용 금액",
+      "common_dividend_yield": 0.0,
+      "credit_grade": "B-",
+      "credit_source": "KISPRICING",
+      "node_interval_days": 30,
+      "refixing_note": "이벤트형 전환가 조정(시가하회발행/주식배당·무상증자/분할·합병/IPO 공모단가 70% 미만). 4개 평가시점 모두 전환가 15,000 불변 → 미발동으로 처리(정형 refixing 비활성)."
+    }
+  },
+  "cases": [
+    {
+      "fixture_id": "rcps_real_2022_issue",
+      "valuation_date": "2022-10-13",
+      "rawForm": {
+        "market": {
+          "spot": 16639,
+          "volatility": 0.6174,
+          "dividend_yield": 0.0
+        },
+        "model": "LATTICE",
+        "options": {
+          "lattice_steps": 120,
+          "node_interval_days": 30
+        },
+        "curves": {
+          "risk_free_ref": "GOVT_2022-10-13",
+          "credit_ref": "CORP_B-_2022-10-13"
+        },
+        "_params_echo": {
+          "Rf": 0.0423,
+          "Rf_tenor_year": 10.0,
+          "Rd": 0.2327,
+          "Rd_tenor_year": 10.0,
+          "u": 1.1951,
+          "d": 0.8368
+        }
+      },
+      "expected": {
+        "per_unit": {
+          "total_fair_value": 16709,
+          "host": 2588,
+          "embedded_derivative": 14121
+        },
+        "total": {
+          "total_fair_value": 16709260410,
+          "host": 2588084997,
+          "embedded_derivative": 14121175413
+        },
+        "component_mapping": {
+          "preferred_share_value": 2588,
+          "embedded_derivative_sum": 14121
+        }
+      },
+      "curve_data": {
+        "tenors": [
+          "3M",
+          "6M",
+          "9M",
+          "1Y",
+          "1.5Y",
+          "2Y",
+          "2.5Y",
+          "3Y",
+          "4Y",
+          "5Y",
+          "7Y",
+          "10Y"
+        ],
+        "govt_ytm_percent": [
+          3.02,
+          3.28,
+          3.45,
+          3.55,
+          3.82,
+          4.18,
+          4.19,
+          4.2,
+          4.28,
+          4.22,
+          4.22,
+          4.23
+        ],
+        "corp_b_minus_ytm_percent": [
+          12.96,
+          14.3,
+          15.51,
+          16.32,
+          17.6,
+          18.84,
+          19.67,
+          20.51,
+          21.25,
+          21.76,
+          22.65,
+          23.27
+        ],
+        "source": "KISPRICING (보고서 OCR, 검증용)",
+        "ocr_confidence": "보고서 화면 캡처 OCR — sanity check 용도. round-trip 검증은 이 값 정확성과 무관하게 성립."
+      }
+    },
+    {
+      "fixture_id": "rcps_real_2022_ye",
+      "valuation_date": "2022-12-31",
+      "rawForm": {
+        "market": {
+          "spot": 16639,
+          "volatility": 0.5655,
+          "dividend_yield": 0.0
+        },
+        "model": "LATTICE",
+        "options": {
+          "lattice_steps": 118,
+          "node_interval_days": 30
+        },
+        "curves": {
+          "risk_free_ref": "GOVT_2022-12-31",
+          "credit_ref": "CORP_B-_2022-12-31"
+        },
+        "_params_echo": {
+          "Rf": 0.0374,
+          "Rf_tenor_year": 9.8,
+          "Rd": 0.2324,
+          "Rd_tenor_year": 9.8,
+          "u": 1.1799,
+          "d": 0.8475
+        }
+      },
+      "expected": {
+        "per_unit": {
+          "total_fair_value": 16649,
+          "host": 2708,
+          "embedded_derivative": 13941
+        },
+        "total": {
+          "total_fair_value": 16649903220,
+          "host": 2708614664,
+          "embedded_derivative": 13941288556
+        },
+        "component_mapping": {
+          "preferred_share_value": 2708,
+          "embedded_derivative_sum": 13941
+        }
+      },
+      "curve_data": {
+        "status": "미수신 — 해당 시점 커브 사진 없음. round-trip은 합성커브로 검증."
+      }
+    },
+    {
+      "fixture_id": "rcps_real_2023_ye",
+      "valuation_date": "2023-12-31",
+      "rawForm": {
+        "market": {
+          "spot": 16610,
+          "volatility": 0.6764,
+          "dividend_yield": 0.0
+        },
+        "model": "LATTICE",
+        "options": {
+          "lattice_steps": 106,
+          "node_interval_days": 30
+        },
+        "curves": {
+          "risk_free_ref": "GOVT_2023-12-31",
+          "credit_ref": "CORP_B-_2023-12-31"
+        },
+        "_params_echo": {
+          "Rf": 0.0319,
+          "Rf_tenor_year": 8.8,
+          "Rd": 0.2225,
+          "Rd_tenor_year": 8.8,
+          "u": 1.2149,
+          "d": 0.8231
+        }
+      },
+      "expected": {
+        "per_unit": {
+          "total_fair_value": 17199,
+          "host": 3948,
+          "embedded_derivative": 13251
+        },
+        "total": {
+          "total_fair_value": 17199661353,
+          "host": 3948567587,
+          "embedded_derivative": 13251093765
+        },
+        "component_mapping": {
+          "preferred_share_value": 3948,
+          "embedded_derivative_sum": 13251
+        },
+        "sensitivity_per_unit": {
+          "vol_minus": {
+            "vol": 0.6264,
+            "value": 16972
+          },
+          "base": {
+            "vol": 0.6764,
+            "value": 17199
+          },
+          "vol_plus": {
+            "vol": 0.7264,
+            "value": 17453
+          }
+        }
+      },
+      "curve_data": {
+        "tenors": [
+          "3M",
+          "6M",
+          "9M",
+          "1Y",
+          "1.5Y",
+          "2Y",
+          "2.5Y",
+          "3Y",
+          "4Y",
+          "5Y",
+          "7Y",
+          "10Y"
+        ],
+        "govt_ytm_percent": [
+          3.39,
+          3.48,
+          3.48,
+          3.48,
+          3.41,
+          3.25,
+          3.18,
+          3.15,
+          3.2,
+          3.16,
+          3.22,
+          3.18
+        ],
+        "corp_b_minus_ytm_percent": [
+          13.32,
+          14.45,
+          15.34,
+          16.02,
+          16.99,
+          18.02,
+          18.84,
+          19.64,
+          20.4,
+          20.87,
+          21.78,
+          22.55
+        ],
+        "source": "KISPRICING (보고서 OCR, 검증용)",
+        "ocr_confidence": "보고서 화면 캡처 OCR — sanity check 용도. round-trip 검증은 이 값 정확성과 무관하게 성립."
+      }
+    },
+    {
+      "fixture_id": "rcps_real_2024_ye",
+      "valuation_date": "2024-12-31",
+      "rawForm": {
+        "market": {
+          "spot": 17134,
+          "volatility": 0.5016,
+          "dividend_yield": 0.0
+        },
+        "model": "LATTICE",
+        "options": {
+          "lattice_steps": 94,
+          "node_interval_days": 30
+        },
+        "curves": {
+          "risk_free_ref": "GOVT_2024-12-31",
+          "credit_ref": "CORP_B-_2024-12-31"
+        },
+        "_params_echo": {
+          "Rf": 0.0296,
+          "Rf_tenor_year": 7.8,
+          "Rd": 0.2113,
+          "Rd_tenor_year": 7.8,
+          "u": 1.1553,
+          "d": 0.8556
+        }
+      },
+      "expected": {
+        "per_unit": {
+          "total_fair_value": 17295,
+          "host": 5560,
+          "embedded_derivative": 11735
+        },
+        "total": {
+          "total_fair_value": 17295510829,
+          "host": 5560855908,
+          "embedded_derivative": 11734654922
+        },
+        "component_mapping": {
+          "preferred_share_value": 5560,
+          "embedded_derivative_sum": 11735
+        },
+        "sensitivity_per_unit": {
+          "vol_minus": {
+            "vol": 0.4516,
+            "value": 17177
+          },
+          "base": {
+            "vol": 0.5016,
+            "value": 17295
+          },
+          "vol_plus": {
+            "vol": 0.5516,
+            "value": 17522
+          }
+        }
+      },
+      "curve_data": {
+        "tenors": [
+          "3M",
+          "6M",
+          "9M",
+          "1Y",
+          "1.5Y",
+          "2Y",
+          "2.5Y",
+          "3Y",
+          "4Y",
+          "5Y",
+          "7Y",
+          "10Y"
+        ],
+        "govt_ytm_percent": [
+          2.86,
+          2.8,
+          2.71,
+          2.71,
+          2.78,
+          2.77,
+          2.72,
+          2.6,
+          2.82,
+          2.77,
+          2.99,
+          2.87
+        ],
+        "corp_b_minus_ytm_percent": [
+          12.09,
+          13.11,
+          13.94,
+          14.54,
+          15.59,
+          16.78,
+          17.69,
+          18.41,
+          19.41,
+          19.9,
+          20.9,
+          21.72
+        ],
+        "source": "KISPRICING (보고서 OCR, 검증용)",
+        "ocr_confidence": "보고서 화면 캡처 OCR — sanity check 용도. round-trip 검증은 이 값 정확성과 무관하게 성립."
+      }
+    }
+  ]
+}
