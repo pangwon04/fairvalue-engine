@@ -33,17 +33,16 @@ class FormRuleValidator(private val mapper: ObjectMapper) {
         val valueByKey = HashMap<String, JsonNode?>()
         forEachField(form) { f ->
             val bind = f.path("bind").asTextOrNull()
-            if (bind != null) valueByKey[f.path("key").asText()] = rawForm.at(bind)
+            if (bind != null) valueByKey[f.path("key").asText()] = nodeAtPath(rawForm, bind)
         }
 
         forEachField(form) { f ->
             val key = f.path("key").asText()
-            val type0 = f.path("type").asText()
             val bind = f.path("bind").asTextOrNull()
             val active = isActive(f, valueByKey)
             if (!active) return@forEachField
 
-            val value = if (bind != null) rawForm.at(bind) else null
+            val value = if (bind != null) nodeAtPath(rawForm, bind) else null
 
             // 1) required
             if (f.path("required").asBoolean(false) && isEmpty(value)) {
@@ -56,7 +55,7 @@ class FormRuleValidator(private val mapper: ObjectMapper) {
                 val rule = v.path("rule").asText()
                 val severity = v.path("severity").asText("error")
                 val msg = v.path("message").asText("검증 실패: $rule")
-                val ok = evalRule(rule, v.path("params"), value, key, bind, valueByKey, type0)
+                val ok = evalRule(rule, v.path("params"), value, valueByKey)
                 if (!ok) issues += ValidationIssue(bind ?: key, rule, severity, msg)
             }
         }
@@ -77,8 +76,7 @@ class FormRuleValidator(private val mapper: ObjectMapper) {
      * 구현 대상: validation-rules.ts 표준 규칙. 미구현 규칙은 통과(오탐 0).
      */
     private fun evalRule(
-        rule: String, params: JsonNode, value: JsonNode?, key: String, bind: String?,
-        vals: Map<String, JsonNode?>, fieldType: String,
+        rule: String, params: JsonNode, value: JsonNode?, vals: Map<String, JsonNode?>,
     ): Boolean {
         if (isEmpty(value) && rule != "assetRequired" && rule != "curveRequired" &&
             rule != "showWhenRequired"
@@ -173,14 +171,4 @@ class FormRuleValidator(private val mapper: ObjectMapper) {
 
     private fun JsonNode?.orEmpty(): Iterable<JsonNode> =
         if (this != null && isArray) this else emptyList()
-
-    /** dot 경로로 값 추출(rights.conversion.strike 등). 없으면 null. */
-    private fun JsonNode.at(path: String): JsonNode? {
-        var cur: JsonNode = this
-        for (seg in path.split('.')) {
-            cur = cur.path(seg)
-            if (cur.isMissingNode) return null
-        }
-        return if (cur.isNull) null else cur
-    }
 }

@@ -7,6 +7,7 @@ import com.fairvalue.error.NotFoundException
 import com.fairvalue.repository.InstrumentTermsRepository
 import com.fairvalue.security.AuthPrincipal
 import com.fairvalue.validation.RawFormValidator
+import com.fairvalue.validation.nodeAtPath
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -39,15 +40,15 @@ class TermsService(
 
         // parity 제거(무시) 후 저장.
         val toStore = stripParity(rawForm.deepCopy())
-        val issue = parseDate(rawForm.at("terms.issue_date"))
-        val maturity = parseDate(rawForm.at("terms.maturity_date"))
+        val issue = parseDate(nodeAtPath(rawForm, "terms.issue_date"))
+        val maturity = parseDate(nodeAtPath(rawForm, "terms.maturity_date"))
         // 만기<=발행이면 컬럼은 비워 둔다(DB CHECK 위반 회피). 값은 terms_json 에 그대로 남는다.
         val datesValid = issue == null || maturity == null || maturity.isAfter(issue)
 
         val existing = termsRepo.findByInstrumentIdAndOrgId(instrumentId, caller.orgId)
         if (existing != null) {
             existing.termsJson = mapper.writeValueAsString(toStore)
-            existing.valuationDate = parseDate(rawForm.at("valuation_date"))
+            existing.valuationDate = parseDate(nodeAtPath(rawForm, "valuation_date"))
             existing.issueDate = if (datesValid) issue else null
             existing.maturityDate = if (datesValid) maturity else null
             termsRepo.save(existing)
@@ -57,7 +58,7 @@ class TermsService(
                     instrumentId = instrumentId,
                     orgId = caller.orgId,
                     termsJson = mapper.writeValueAsString(toStore),
-                    valuationDate = parseDate(rawForm.at("valuation_date")),
+                    valuationDate = parseDate(nodeAtPath(rawForm, "valuation_date")),
                     issueDate = if (datesValid) issue else null,
                     maturityDate = if (datesValid) maturity else null,
                 ),
@@ -89,13 +90,4 @@ class TermsService(
 
     private fun parseDate(v: JsonNode?): LocalDate? =
         if (v != null && v.isTextual) runCatching { LocalDate.parse(v.asText()) }.getOrNull() else null
-
-    private fun JsonNode.at(path: String): JsonNode? {
-        var cur: JsonNode = this
-        for (seg in path.split('.')) {
-            cur = cur.path(seg)
-            if (cur.isMissingNode) return null
-        }
-        return if (cur.isNull) null else cur
-    }
 }
