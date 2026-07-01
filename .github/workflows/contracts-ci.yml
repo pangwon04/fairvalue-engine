@@ -79,7 +79,7 @@ jobs:
           ./gradlew test --no-daemon
 
   frontend:
-    name: frontend — form schema · bind 검증 · openapi lint
+    name: frontend — build · typecheck · form schema · bind 검증 · openapi lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,4 +91,4 @@ jobs:
         run: npm install
       - name: verify:all (vitest + verify:bind + lint:openapi)
         working-directory: frontend
-        run: npm run verify:all
+        ru

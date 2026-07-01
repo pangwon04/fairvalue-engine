@@ -1,0 +1,18 @@
+/* Pretendard 웹폰트(무료). 표·숫자 정렬용 tabular-nums. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html, body { height: 100%; }
+body {
+  font-family: "Pretendard Variable", Pretendard, system-ui, sans-serif;
+  background: #f8fafc;      /* slate-50 */
+  color: #0f172a;           /* slate-900 */
+}
+/* 표·숫자는 tabular */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* JWT는 localStorage 저장(속도 우선). ★프로덕션 전 httpOnly 쿠키로 강화 예정. */
