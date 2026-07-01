@@ -39,7 +39,7 @@ class SecurityConfig(
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .csrf { it.disable() }
-            .cors { it.configurationSource(corsConfigurationSource()) }   // ★ CORS 연결
+            .cors {  }   // ★ CORS 연결
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 // ★ preflight(OPTIONS) 는 인증 없이 통과(이중 안전).
