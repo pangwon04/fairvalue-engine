@@ -1,0 +1,31 @@
+{
+  "_note": "CPS(전환우선주) dated(만기형) 합성 입력. 외부 실보고서 없음 — self-consistency 골든(cps_case1.json)·부호·Σ=total·MC 교차검증·RCPS 정합성으로 보증. 프리미엄 우선주(배당 8% > 할인 rd 5%)라 영구형(cps_perpetual)이 만기형보다 host 큼(host_type 검증용). CPS=RCPS−상환권: 같은 입력을 calculate_rcps 에 넣으면 동일값(자기검증).",
+  "instrument_type": "CPS",
+  "valuation_date": "2024-06-26",
+  "instrument_id": 5001,
+  "job_id": 1,
+  "model": "TF_LATTICE",
+  "seed": 20240101,
+  "model_version": "cps-1.0.0",
+  "terms": {
+    "issue_date": "2024-06-26",
+    "maturity_date": "2029-06-26",
+    "issue_price": 10000,
+    "face_value": 10000,
+    "dividend_preferred_rate": 0.08,
+    "host_type": "dated"
+  },
+  "rights": {
+    "conversion": { "strike": 10000, "ratio": 1, "start": "2024-07-26", "end": "2029-06-26" },
+    "refixing": { "enabled": false }
+  },
+  "market": { "spot": 11000, "volatility": 0.35, "dividend_yield": 0.0 },
+  "options": { "lattice_steps": 60, "node_interval_days": 30 },
+  "curves": {
+    "risk_free_curve": [[0.25,3.0],[1.0,3.0],[3.0,3.0],[5.0,3.0],[10.0,3.0]],
+    "credit_curve": [[0.25,5.0],[1.0,5.0],[3.0,5.0],[5.0,5.0],[10.0,5.0]],
+    "curve_source": "SYNTHETIC_IG_5PCT",
+    "curve_version": "v1",
+    "interpolation_method": "LINEAR"
+  }
+}

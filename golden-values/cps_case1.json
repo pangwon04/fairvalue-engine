@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "fixture_id": "cps_case1",
+    "instrument_type": "CPS",
+    "host_type": "dated",
+    "source": "합성 입력(문헌 기반 프리미엄 우선주). ★외부 실보고서 미검증 — RCPS 와 달리 실보고서 정답지가 없다.",
+    "validation_basis": "self-consistency 골든(회귀 앵커) + Σ=total 불변식 + 부호규칙 + lattice-vs-MC 교차검증(전환옵션 조각) + RCPS 정합성(CPS=RCPS−상환권 동일입력 일치). cb_case1 과 동일하게 절대값은 self-consistency 로만 보증(외부 미검증).",
+    "model": "TF_LATTICE (Tsiveriotis-Fernandes, 측도 분리 C 모델 재사용)",
+    "tolerance": { "relative": 0.01, "note": "엔진 회귀 앵커. 1% 초과 변동 시 엔진 변화 감지(외부 정확도 주장 아님)." },
+    "inputs": {
+      "issue_price": 10000, "dividend_preferred_rate": 0.08, "host_type": "dated",
+      "spot": 11000, "volatility": 0.35, "conversion_strike": 10000, "conversion_ratio": 1,
+      "maturity_years": 5.0, "lattice_steps": 60, "node_interval_days": 30,
+      "risk_free_flat": 0.03, "credit_flat": 0.05
+    }
+  },
+  "expected": {
+    "per_unit": {
+      "total_fair_value": 13605.188,
+      "host": 7273.1018,
+      "embedded_derivative": 6332.0862
+    },
+    "component_mapping": {
+      "preferred_share_value": 7273.1018,
+      "conversion_option_value": 6332.0862,
+      "redemption_option_value": 0.0
+    },
+    "sum_invariant": "preferred_share_value + conversion_option_value = total_fair_value (0.01)"
+  }
+}

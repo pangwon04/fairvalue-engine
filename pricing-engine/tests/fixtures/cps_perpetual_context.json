@@ -1,0 +1,31 @@
+{
+  "_note": "CPS 영구형(perpetual) 합성 입력. host_type=perpetual → 만기 없음, 우선주=영구 배당 PV(Gordon div/rd). 격자 근사: horizon 50년 절단(PERP_HORIZON_YEARS), 만기노드 잔여 = div/rd, lattice_steps=200(Δt=0.25). maturity_date=null. 나머지 조건은 cps_case1(dated)과 동일 → host_type 비교(perpetual host > dated host)용.",
+  "instrument_type": "CPS",
+  "valuation_date": "2024-06-26",
+  "instrument_id": 5002,
+  "job_id": 2,
+  "model": "TF_LATTICE",
+  "seed": 20240101,
+  "model_version": "cps-1.0.0",
+  "terms": {
+    "issue_date": "2024-06-26",
+    "maturity_date": null,
+    "issue_price": 10000,
+    "face_value": 10000,
+    "dividend_preferred_rate": 0.08,
+    "host_type": "perpetual"
+  },
+  "rights": {
+    "conversion": { "strike": 10000, "ratio": 1, "start": "2024-07-26", "end": null },
+    "refixing": { "enabled": false }
+  },
+  "market": { "spot": 11000, "volatility": 0.35, "dividend_yield": 0.0 },
+  "options": { "lattice_steps": 200, "node_interval_days": 30 },
+  "curves": {
+    "risk_free_curve": [[0.25,3.0],[1.0,3.0],[3.0,3.0],[5.0,3.0],[10.0,3.0]],
+    "credit_curve": [[0.25,5.0],[1.0,5.0],[3.0,5.0],[5.0,5.0],[10.0,5.0]],
+    "curve_source": "SYNTHETIC_IG_5PCT",
+    "curve_version": "v1",
+    "interpolation_method": "LINEAR"
+  }
+}
