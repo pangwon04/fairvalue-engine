@@ -34,8 +34,9 @@ class RealPricingEngineClient(
 ) : PricingEngineClient {
 
     private val http: HttpClient = HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_1_1)
         .connectTimeout(Duration.ofSeconds(5))
-        .build()
+	.build()
 
     override fun price(context: ResolvedContext, instrument: InstrumentEntity, jobId: Long): PricingResult {
         // 식별자 주입(엔진 echo). contextJson 은 그대로 전송.
