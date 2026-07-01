@@ -1,0 +1,37 @@
+{
+  "_note": "EB(교환사채) 합성 입력. 교환옵션 기초자산 = 타사주(target_asset), rights.exchange.target_market 에 명시입력(MANUAL, 비상장 전제). 발행사 자사 market(ctx.market)과 키 분리 — 교환옵션엔 target_market 만 쓰인다(silent-bug 게이트로 확인). 발행사 신용(credit_curve→rd)은 채권 host 에만, 교환옵션 equity leg 은 rf. 상관관계(발행사 신용↔타사 주가) 미반영 표준 단순화. 상장주 자동조회(MARKET)는 백로그. ★외부 실보고서 없음 — self-consistency 골든(eb_case1.json)·Σ=total·MC 교차검증·CB 정합성(EB[자사주+희석off]≡CB)으로 보증. 희석 미적용(타사주 교환→발행사 신주발행 아님→dilution=0).",
+  "instrument_type": "EB",
+  "valuation_date": "2024-06-26",
+  "instrument_id": 6001,
+  "job_id": 1,
+  "model": "TF_LATTICE",
+  "seed": 20240101,
+  "model_version": "eb-1.0.0",
+  "terms": {
+    "issue_date": "2023-06-26",
+    "maturity_date": "2028-06-26",
+    "face_value": 10000,
+    "coupon_rate": 3.0,
+    "coupon_freq_month": 6,
+    "redemption_type": "bullet"
+  },
+  "rights": {
+    "exchange": {
+      "target_asset_id": 999,
+      "ratio": 1,
+      "strike": 5000,
+      "start": "2024-09-26",
+      "target_market": { "spot": 5500, "volatility": 40.0, "dividend_yield": 1.0, "data_source": "manual", "_note": "타사 자산 파라미터, 명시입력(비상장 전제)" }
+    },
+    "redemption": { "put": { "enabled": true, "yield": 5.0, "start": "2026-06-26" } }
+  },
+  "market": { "asset_id": 880, "spot": 3260, "volatility": 45.0, "dividend_yield": 0.0, "data_source": "manual", "_note": "발행사 자사 파라미터 — 교환옵션엔 미사용(target_market 사용)" },
+  "curves": {
+    "risk_free_curve": [[0.25,3.0],[1.0,3.0],[3.0,3.0],[5.0,3.0]],
+    "credit_curve": [[0.25,8.0],[1.0,8.0],[3.0,8.0],[5.0,8.0]],
+    "curve_source": "SYNTHETIC_ISSUER_B_8PCT",
+    "curve_version": "v1",
+    "interpolation_method": "LINEAR"
+  },
+  "options": { "lattice_steps": 300 }
+}

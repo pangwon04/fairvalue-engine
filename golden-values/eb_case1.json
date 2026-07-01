@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "fixture_id": "eb_case1",
+    "instrument_type": "EB",
+    "source": "합성 입력(교환사채, 타사주 교환). ★외부 실보고서 미검증 — RCPS 와 달리 실보고서 정답지 없음.",
+    "validation_basis": "self-consistency 골든(회귀 앵커) + Σ=total 불변식 + 부호규칙 + lattice-vs-MC(target GBM) + CB 정합성(EB[교환대상=자사주+희석off] ≡ CB[전환]). cb_case1 과 동일하게 절대값은 self-consistency 로만 보증(외부 미검증).",
+    "model": "TF_LATTICE (Tsiveriotis-Fernandes, CB 채권 host 재사용, 교환옵션 underlying=target_asset)",
+    "tolerance": { "relative": 0.01, "note": "엔진 회귀 앵커. 1% 초과 변동 시 엔진 변화 감지(외부 정확도 주장 아님)." },
+    "inputs": {
+      "face_value": 10000, "coupon_rate": 3.0, "coupon_freq_month": 6,
+      "maturity": "2028-06-26", "put_yield": 5.0, "put_start": "2026-06-26",
+      "exchange_ratio": 1, "exchange_strike": 5000,
+      "target_market": { "spot": 5500, "volatility": 40.0, "dividend_yield": 1.0, "note": "타사주 명시입력" },
+      "issuer_curves": { "risk_free_flat": 3.0, "credit_flat": 8.0 },
+      "lattice_steps": 300
+    }
+  },
+  "expected": {
+    "per_unit": {
+      "total_fair_value": 10590.9119,
+      "bond_value": 8268.0187,
+      "exchange_option_value": 831.7366,
+      "redemption_option_value": 1491.1566
+    },
+    "component_mapping": {
+      "bond_value": 8268.0187,
+      "exchange_option_value": 831.7366,
+      "redemption_option_value": 1491.1566,
+      "conversion_option_value": 0.0,
+      "dilution_effect": 0.0
+    },
+    "sum_invariant": "bond_value + exchange_option_value + redemption_option_value = total_fair_value (0.01)"
+  }
+}
