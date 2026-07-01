@@ -79,7 +79,7 @@ jobs:
           ./gradlew test --no-daemon
 
   frontend:
-    name: frontend — build · typecheck · form schema · bind 검증 · openapi lint
+    name: frontend build typecheck form-schema bind openapi-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,4 +91,12 @@ jobs:
         run: npm install
       - name: verify:all (vitest + verify:bind + lint:openapi)
         working-directory: frontend
-        ru
+        run: npm run verify:all
+      - name: typecheck (tsc --noEmit)
+        working-directory: frontend
+        run: npm run typecheck
+      - name: next build
+        working-directory: frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
