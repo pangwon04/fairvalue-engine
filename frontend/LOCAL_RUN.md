@@ -115,3 +115,78 @@ curl.exe -X POST http://localhost:8080/curves `
 ## 참고
 - JWT는 브라우저 localStorage(`fv_token`)에 저장됩니다(속도 우선; 프로덕션 전 httpOnly 쿠키로 강화 예정).
 - 이 슬라이스는 **CB 한 상품** 수직 관통입니다. 다른 상품은 스키마(`src/forms/productSchemas/*.json`)만 추가하면 같은 렌더러로 동작합니다.
+
+---
+
+# Phase 5-2 — Python 엔진 실연결 (4개 프로세스)
+
+이제 백엔드가 **실제 Python 파이싱 엔진**을 호출합니다. CB 평가 시 12키가 **실제 계산값**(0 아님)으로 나오려면 로컬에 **4개 프로세스**가 동시에 떠 있어야 합니다:
+
+| # | 프로세스 | 포트 | 실행 |
+|---|---|---|---|
+| 1 | Postgres (Docker) | 5432 | `docker start fv-postgres` |
+| 2 | **Python 엔진 (FastAPI)** | **8000** | uvicorn (아래 E단계) |
+| 3 | Kotlin 백엔드 | 8080 | `.\gradlew bootRun` |
+| 4 | 프론트 (Next) | 3000 | `npm run dev` |
+
+각각 **별도 PowerShell 창**에서 띄우고 켜둡니다(끄면 그 부분이 멈춤).
+
+## E1. Python 확인
+```powershell
+python --version    # 3.10 이상 권장 (예: 3.11.x)
+```
+**③ 막히면**: `python` 이 안 되면 `py --version` 시도. 미설치면 https://www.python.org 에서 설치(설치 시 "Add to PATH" 체크).
+
+## E2. 엔진 의존성 설치 (새 PowerShell 창)
+```powershell
+cd C:\fv_engine_project\pricing-engine
+pip install -r requirements.txt
+```
+**② 기대**: `Successfully installed fastapi ... uvicorn ...`.
+**③ 막히면**: 사내 프록시면 `pip install -r requirements.txt --index-url https://pypi.org/simple`.
+
+## E3. 엔진 실행 (이 창은 켜둠)
+```powershell
+uvicorn app.main:app --port 8000
+```
+**② 기대**: `Uvicorn running on http://127.0.0.1:8000`.
+**③ 막히면**: `ModuleNotFoundError: app` → 반드시 `pricing-engine` 폴더 안에서 실행. 8000 사용 중이면 `--port 8001` 후 백엔드 `ENGINE_BASE_URL` 도 8001 로.
+
+## E4. 엔진 헬스체크 (또 다른 창에서 잠깐)
+```powershell
+curl.exe http://localhost:8000/health
+```
+**② 기대**: `{"status":"UP","engines":["CB","RCPS","CPS","EB","BW"]}`.
+
+## E5. 백엔드 재시작 (엔진을 가리키도록)
+백엔드는 기본값으로 `http://localhost:8000` 엔진을 호출합니다(설정 불필요). 백엔드 창에서:
+```powershell
+# 기존 bootRun 창에서 Ctrl+C 후
+cd C:\fv_engine_project\backend
+.\gradlew bootRun
+```
+**② 기대**: `Started FairValueApplication ... :8080`.
+> 엔진 포트를 바꿨다면(예 8001): 백엔드 실행 전 `$env:ENGINE_BASE_URL="http://localhost:8001"` 설정.
+
+## E6. 프론트에서 CB 재평가 → 실제값 확인
+브라우저 `http://localhost:3000` → 기존 CB 상품 열기(또는 새로 생성·입력) → **평가 실행**.
+
+**② 기대(이제 정상)**:
+- **컴포넌트 12키가 실제값**(예: 채권가치·전환옵션·상환권이 0이 아닌 숫자), **Σ = total ✓**.
+- **total / per unit** 이 실제 계산값(예: 만 단위).
+- **경고에 `PLACEHOLDER`("엔진 미구현") 없음**.
+- **key_parameters 채워짐**(volatility·risk_free_rate·parity·lattice_steps).
+
+**③ 막히면**:
+- 평가 실패에 "엔진 호출 실패/오류" → E3 엔진 창이 떠 있는지, E4 `/health` 200 인지 확인.
+- 여전히 12키가 0 · `PLACEHOLDER` → 백엔드가 이전(Dummy) 상태. E5 재시작 확인(`ENGINE_MODE` 가 `dummy` 로 설정돼 있지 않은지: 기본 `real`).
+- 엔진 창에 빨간 에러(traceback) → 입력(커브 미선택 등) 문제일 수 있음. 커브를 평가기준일 as_of 와 맞춰 선택했는지 확인(6단계).
+
+## 정리 — 평소 기동 순서
+1. `docker start fv-postgres`
+2. (창2) `cd pricing-engine; uvicorn app.main:app --port 8000`
+3. (창3) `cd backend; .\gradlew bootRun`
+4. (창4) `cd frontend; npm run dev`
+→ 브라우저 localhost:3000.
+
+> **재현성 메모**: 백엔드가 계산한 `input_hash`(커브 스냅샷 포함)를 엔진이 **그대로 echo**합니다(엔진은 재계산 안 함). 같은 입력이면 같은 해시 → 캐시 재사용. 결과 화면의 재현성 정보에서 확인 가능.

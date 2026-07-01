@@ -45,3 +45,11 @@ springdoc:
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
+
+# ★ Phase 5-2: 파이싱 엔진(Python FastAPI) 연결.
+#   mode=real(기본) → RealPricingEngineClient 가 base-url/price 호출.
+#   mode=dummy      → DummyPricingEngineClient(자리표시, 테스트/오프라인용).
+app:
+  engine:
+    base-url: ${ENGINE_BASE_URL:http://localhost:8000}
+    mode: ${ENGINE_MODE:real}

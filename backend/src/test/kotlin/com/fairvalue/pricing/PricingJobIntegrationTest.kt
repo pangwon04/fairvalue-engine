@@ -45,6 +45,9 @@ class PricingJobIntegrationTest {
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
             registry.add("jwt.secret") { "integration-test-secret-long-enough-32bytes!!" }
+            // ★ Phase 5-2: 이 파이프라인 테스트는 Dummy 엔진으로(실 엔진 HTTP 없이) placeholder 결과 검증.
+            //   프로덕션은 app.engine.mode=real(기본) → RealPricingEngineClient(Python FastAPI 호출).
+            registry.add("app.engine.mode") { "dummy" }
         }
     }
 

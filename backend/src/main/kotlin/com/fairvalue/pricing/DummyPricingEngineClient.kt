@@ -6,6 +6,7 @@ import com.fairvalue.dto.Issue
 import com.fairvalue.dto.KeyParameters
 import com.fairvalue.dto.PricingResult
 import com.fairvalue.dto.Reproducibility
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
 
@@ -19,6 +20,7 @@ import java.time.OffsetDateTime
  * Phase 3 에서 실제 엔진 호출 구현으로 교체 시 결과 형식이 바뀌지 않는다.
  */
 @Component
+@ConditionalOnProperty(prefix = "app.engine", name = ["mode"], havingValue = "dummy")
 class DummyPricingEngineClient : PricingEngineClient {
 
     override fun price(context: ResolvedContext, instrument: InstrumentEntity, jobId: Long): PricingResult =
