@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "fixture_id": "bw_case1",
+    "instrument_type": "BW",
+    "separable": true,
+    "source": "합성 입력(분리형 신주인수권부사채). ★외부 실보고서 미검증.",
+    "validation_basis": "self-consistency 골든(회귀 앵커) + Σ(부호포함)=total + 부호규칙(dilution≤0) + lattice/BSM-vs-MC(자사주 GBM) + 분리/비분리 게이트(다름) + 희석 게이트(new_shares↑→dilution↓) + CB 정합성(비분리·K=0·df=1 ≡ CB 전환). cb_case1 방식(절대값 self-consistency).",
+    "model": "TF_LATTICE (분리형=독립 standalone 콜 합산 / 비분리형=복합격자, 페이오프 희석 3.4.1.4)",
+    "tolerance": { "relative": 0.01, "note": "엔진 회귀 앵커. 외부 정확도 주장 아님." },
+    "inputs": { "face_value": 10000, "coupon_rate": 3.0, "coupon_freq_month": 6, "maturity": "2028-06-26", "warrant_strike": 10000, "warrant_quantity": 1, "separable": true, "warrant_window": "2024-09-26..2028-06-26 (American)", "put_yield": 5.0, "put_start": "2026-06-26", "spot": 11000, "volatility": 40.0, "dividend_yield": 1.0, "shares_outstanding": 10000000, "new_shares": 2000000, "issuer_curves": { "risk_free_flat": 3.0, "credit_flat": 8.0 }, "lattice_steps": 300 }
+  },
+  "expected": {
+    "per_unit": { "total_fair_value": 13685.4773, "bond_value": 8268.0187, "warrant_value": 3945.1148, "redemption_option_value": 2129.8629, "dilution_effect": -657.5191 },
+    "component_mapping": { "bond_value": 8268.0187, "warrant_value": 3945.1148, "redemption_option_value": 2129.8629, "dilution_effect": -657.5191, "conversion_option_value": 0.0, "exchange_option_value": 0.0 },
+    "sum_invariant": "bond_value + warrant_value + redemption_option_value + dilution_effect = total_fair_value (0.01)"
+  }
+}

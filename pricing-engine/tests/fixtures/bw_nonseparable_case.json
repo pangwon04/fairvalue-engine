@@ -1,0 +1,89 @@
+{
+  "_note": "BW 비분리형(separable=false) 합성 입력. 복합상품→격자에서 채권보유 vs 신주인수권 행사 노드별 비교(얽힘, tf_value 미러). 나머지는 bw_case1과 동일 → 분리/비분리 게이트용. 외부 미검증.",
+  "instrument_type": "BW",
+  "valuation_date": "2024-06-26",
+  "instrument_id": 7002,
+  "job_id": 2,
+  "model": "TF_LATTICE",
+  "seed": 20240101,
+  "model_version": "bw-1.0.0",
+  "terms": {
+    "issue_date": "2023-06-26",
+    "maturity_date": "2028-06-26",
+    "face_value": 10000,
+    "coupon_rate": 3.0,
+    "coupon_freq_month": 6,
+    "redemption_type": "bullet"
+  },
+  "rights": {
+    "warrant": {
+      "strike": 10000,
+      "quantity": 1,
+      "separable": false,
+      "start": "2024-09-26",
+      "end": "2028-06-26"
+    },
+    "dilution": {
+      "enabled": true,
+      "new_shares": 2000000
+    },
+    "redemption": {
+      "put": {
+        "enabled": true,
+        "yield": 5.0,
+        "start": "2026-06-26"
+      }
+    }
+  },
+  "market": {
+    "spot": 11000,
+    "volatility": 40.0,
+    "dividend_yield": 1.0,
+    "shares_outstanding": 10000000,
+    "data_source": "manual"
+  },
+  "curves": {
+    "risk_free_curve": [
+      [
+        0.25,
+        3.0
+      ],
+      [
+        1.0,
+        3.0
+      ],
+      [
+        3.0,
+        3.0
+      ],
+      [
+        5.0,
+        3.0
+      ]
+    ],
+    "credit_curve": [
+      [
+        0.25,
+        8.0
+      ],
+      [
+        1.0,
+        8.0
+      ],
+      [
+        3.0,
+        8.0
+      ],
+      [
+        5.0,
+        8.0
+      ]
+    ],
+    "curve_source": "SYNTHETIC_ISSUER_B_8PCT",
+    "curve_version": "v1",
+    "interpolation_method": "LINEAR"
+  },
+  "options": {
+    "lattice_steps": 300
+  }
+}

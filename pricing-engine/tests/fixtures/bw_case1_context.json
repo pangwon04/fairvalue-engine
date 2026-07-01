@@ -1,0 +1,19 @@
+{
+  "_note": "BW(신주인수권부사채) 분리형(separable=true) 합성 입력. 회계근거 2.1.4.3: 분리형 신주인수권=별도 금융상품→채권과 독립 평가 후 합산. ★European/American은 warrant.start/end(행사기간)로 결정(separable과 독립) — 여기선 start·end 있어 American 콜. 희석=페이오프 희석반영법(3.4.1.4) df=N/(N+M) 노드별. component: bond+warrant+redemption+dilution(−). 외부 실보고서 없음 — self-consistency/골든/MC/CB정합성으로 보증. shares_outstanding=N, dilution.new_shares=M.",
+  "instrument_type": "BW",
+  "valuation_date": "2024-06-26",
+  "instrument_id": 7001,
+  "job_id": 1,
+  "model": "TF_LATTICE",
+  "seed": 20240101,
+  "model_version": "bw-1.0.0",
+  "terms": { "issue_date": "2023-06-26", "maturity_date": "2028-06-26", "face_value": 10000, "coupon_rate": 3.0, "coupon_freq_month": 6, "redemption_type": "bullet" },
+  "rights": {
+    "warrant": { "strike": 10000, "quantity": 1, "separable": true, "start": "2024-09-26", "end": "2028-06-26" },
+    "dilution": { "enabled": true, "new_shares": 2000000 },
+    "redemption": { "put": { "enabled": true, "yield": 5.0, "start": "2026-06-26" } }
+  },
+  "market": { "spot": 11000, "volatility": 40.0, "dividend_yield": 1.0, "shares_outstanding": 10000000, "data_source": "manual" },
+  "curves": { "risk_free_curve": [[0.25,3.0],[1.0,3.0],[3.0,3.0],[5.0,3.0]], "credit_curve": [[0.25,8.0],[1.0,8.0],[3.0,8.0],[5.0,8.0]], "curve_source": "SYNTHETIC_ISSUER_B_8PCT", "curve_version": "v1", "interpolation_method": "LINEAR" },
+  "options": { "lattice_steps": 300 }
+}
