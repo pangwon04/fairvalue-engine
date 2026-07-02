@@ -27,6 +27,7 @@ import math
 
 from .cb_calculator import _rates_from_curves, _solve_ytm, _to_date, _year_frac
 from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees, crr_params, _coupon_steps
+from .gs_model import gs_value, gs_value_with_trees
 
 
 def _standalone_call(s0, K, sigma, T, rf, q, steps, shares, df, american, w_start_t, w_end_t):
@@ -107,7 +108,59 @@ def _bw_composite(s0, sigma, T, steps, rf, rd, q, face, coupon_per_year, freq,
     return Vb[0] + Ve[0]
 
 
+def _bw_composite_gs(s0, sigma, T, steps, rf, rd, q, face, coupon_per_year, freq,
+                     shares, K, df, warr_on, w_start_t, w_end_t, put_on, put_price, put_start_t):
+    """비분리형 복합격자 — GS(전환확률 가중 할인) 버전.
+    노드별 max(채권보유, 신주인수권 행사). 행사 payoff = shares·df·(S−K)(지분, q=1),
+    풋(현금, q=0). 할인 y=q·rf+(1−q)·rd. df=1,K=0,put off 이면 GS 전환격자와 동일."""
+    n = steps
+    dt = T / n
+    u, d, p = crr_params(sigma, dt, rf, q)
+    cpn = (coupon_per_year / freq) if freq > 0 else 0.0
+    coupon_at = _coupon_steps(CBLatticeSpec(
+        s0=s0, sigma=sigma, t_years=T, steps=steps, rf=rf, rd=rd, q=q,
+        face=face, coupon_per_year=coupon_per_year, freq=freq), dt)
+    u2 = u * u
+    V = [0.0] * (n + 1)
+    Q = [0.0] * (n + 1)
+    s = s0 * (d ** n)
+    for j in range(n + 1):
+        redemption = face + cpn
+        ex = shares * df * (s - K) if (warr_on and w_start_t - 1e-9 <= T <= w_end_t + 1e-9) else -1.0
+        if ex >= redemption and ex > 0:
+            V[j] = ex; Q[j] = 1.0
+        else:
+            V[j] = redemption; Q[j] = 0.0
+        s *= u2
+    for step in range(n - 1, -1, -1):
+        t = step * dt
+        s = s0 * (d ** step)
+        nV = [0.0] * (step + 1)
+        nQ = [0.0] * (step + 1)
+        for j in range(step + 1):
+            q_cont = p * Q[j + 1] + (1 - p) * Q[j]
+            y = q_cont * rf + (1 - q_cont) * rd
+            cont = math.exp(-y * dt) * (p * V[j + 1] + (1 - p) * V[j])
+            if step in coupon_at:
+                cont += cpn
+            val, qh = cont, q_cont
+            if warr_on and (w_start_t - 1e-9) <= t <= (w_end_t + 1e-9):
+                ex = shares * df * (s - K)
+                if ex >= val and ex > 0:
+                    val, qh = ex, 1.0
+            if put_on and t >= put_start_t - 1e-9:
+                if put_price > val:
+                    val, qh = put_price, 0.0
+            nV[j] = val; nQ[j] = qh
+            s *= u2
+        V, Q = nV, nQ
+    return V[0]
+
+
 def calculate_bw(ctx: dict) -> dict:
+    # ★ 모델 분기점: model=GS 면 Goldman-Sachs 격자. 아니면 기존 TF(불변).
+    if str(ctx.get("model", "")).upper().startswith("GS"):
+        return calculate_bw_gs(ctx)
     terms = ctx.get("terms", {})
     market = ctx.get("market", {})
     rights = ctx.get("rights", {})
@@ -247,6 +300,149 @@ def calculate_bw(ctx: dict) -> dict:
             "model_version": ctx.get("model_version", "bw-1.0.0"),
         },
         "warnings": [{"code": "W204", "message": f"BW {mode}·{style} 행사·df={df:.4f}(페이오프 희석 3.4.1.4). 외부 실보고서 미검증(self-consistency/골든/MC/CB정합성으로 보증)", "stage": "model"}],
+        "errors": [],
+        "trees": trees,
+    }
+
+
+# ===========================================================================
+# BW — Goldman-Sachs 격자 분기 (엔진확장-2)
+#   비분리형: _bw_composite_gs(전환확률 가중 할인)로 telescoping.
+#   분리형: 채권(gs_value @전환없음=rd) + 독립 신주인수권(_standalone_call @rf 지분).
+#     분리형은 채권↔워런트 상호작용이 없어 GS≡TF(전환확률 가중 대상 아님) — 정상.
+#   할인만 GS(비분리형에서 TF 와 값 상이). TF 경로 불변.
+# ===========================================================================
+def calculate_bw_gs(ctx: dict) -> dict:
+    terms = ctx.get("terms", {})
+    market = ctx.get("market", {})
+    rights = ctx.get("rights", {})
+    options = ctx.get("options", {})
+
+    val_date = _to_date(ctx["valuation_date"])
+    issue_date = _to_date(terms["issue_date"])
+    maturity = _to_date(terms["maturity_date"])
+    t_years = _year_frac(val_date, maturity)
+
+    s0 = float(market["spot"])
+    sigma = float(market["volatility"]) / 100.0
+    q = float(market.get("dividend_yield") or 0.0) / 100.0
+    face = float(terms.get("face_value") or 10000.0)
+    steps = int(options.get("lattice_steps") or 300)
+
+    rf, rd = _rates_from_curves(ctx, t_years)
+    freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
+    coupon_per_year = (float(terms.get("coupon_rate") or 0.0) / 100.0) * face
+
+    w = rights.get("warrant", {}) or {}
+    K = float(w["strike"]) if w.get("strike") is not None else s0
+    quantity = float(w.get("quantity") or 1.0)
+    separable = bool(w.get("separable"))
+    w_start_t = max(0.0, _year_frac(val_date, _to_date(w["start"]))) if w.get("start") else t_years
+    w_end_t = _year_frac(val_date, _to_date(w["end"])) if w.get("end") else t_years
+    american = w_start_t < t_years - 1e-9
+    parity = quantity * s0
+
+    dil = rights.get("dilution", {}) or {}
+    dil_on = bool(dil.get("enabled"))
+    N = float(market.get("shares_outstanding") or 0.0)
+    M = float(dil.get("new_shares") or 0.0)
+    df = (N / (N + M)) if (dil_on and N > 0 and M > 0) else 1.0
+
+    put = (rights.get("redemption", {}) or {}).get("put", {}) or {}
+    put_on = bool(put.get("enabled"))
+    ytp = float(put.get("yield") or terms.get("guaranteed_yield") or 0.0) / 100.0
+    put_date = _to_date(put["start"]) if put.get("start") else maturity
+    put_price = face * (1.0 + ytp) ** max(0.0, _year_frac(issue_date, put_date))
+    put_start_t = max(0.0, _year_frac(val_date, put_date)) if put.get("start") else 0.0
+
+    # 채권 host (전환/풋 off) = GS 순수채권(q≡0 → rd 할인)
+    bond_value = gs_value(CBLatticeSpec(
+        s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf, rd=rd, q=q,
+        face=face, coupon_per_year=coupon_per_year, freq=freq, conv_enabled=False, put_enabled=False))
+
+    if separable:
+        bond_put = gs_value(CBLatticeSpec(
+            s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf, rd=rd, q=q,
+            face=face, coupon_per_year=coupon_per_year, freq=freq, conv_enabled=False,
+            put_enabled=put_on, put_price=put_price, put_start_t=put_start_t))
+        redemption_option_value = bond_put - bond_value
+        w_undil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, 1.0, american, w_start_t, w_end_t)
+        w_dil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, df, american, w_start_t, w_end_t)
+        warrant_value = w_undil
+        dilution_effect = w_dil - w_undil
+        total = bond_value + warrant_value + dilution_effect + redemption_option_value
+    else:
+        def comp(df_, warr, put_):
+            return _bw_composite_gs(s0, sigma, t_years, steps, rf, rd, q, face, coupon_per_year, freq,
+                                    quantity, K, df_, warr, w_start_t, w_end_t, put_, put_price, put_start_t)
+        base_bond = comp(1.0, False, False)
+        w_undil_c = comp(1.0, True, False)
+        w_dil_c = comp(df, True, False)
+        full = comp(df, True, put_on)
+        bond_value = base_bond
+        warrant_value = w_undil_c - base_bond
+        dilution_effect = w_dil_c - w_undil_c
+        redemption_option_value = full - w_dil_c
+        total = full
+
+    if dilution_effect > 0:
+        dilution_effect = 0.0
+
+    _rsteps = report_steps(t_years, steps)
+    _rb, _re, trees = gs_value_with_trees(CBLatticeSpec(
+        s0=s0, sigma=sigma, t_years=t_years, steps=_rsteps, rf=rf, rd=rd, q=q,
+        face=face, coupon_per_year=coupon_per_year, freq=freq,
+        conv_enabled=True, conv_ratio=quantity, conv_start_t=(w_start_t if american else t_years),
+        put_enabled=put_on, put_price=put_price, put_start_t=put_start_t,
+    ))
+
+    components = {
+        "bond_value": round(bond_value, 4),
+        "preferred_share_value": None,
+        "conversion_option_value": 0.0,
+        "exchange_option_value": None,
+        "warrant_value": round(warrant_value, 4),
+        "redemption_option_value": round(redemption_option_value, 4),
+        "issuer_call_value": 0.0,
+        "sale_claim_value": 0.0,
+        "stock_option_value": None,
+        "conditional_option_value": None,
+        "dilution_effect": round(dilution_effect, 4),
+        "total_fair_value": round(total, 4),
+    }
+    ytm = _solve_ytm(bond_value, coupon_per_year, freq, face, t_years)
+    key_parameters = {
+        "risk_free_rate": round(rf * 100, 4),
+        "ytm": round(ytm * 100, 4) if ytm is not None else None,
+        "credit_spread": round((rd - rf) * 100, 4),
+        "volatility": round(sigma * 100, 4),
+        "dividend_yield": round(q * 100, 4),
+        "parity": round(parity, 4),
+        "discount_rate": round(rd * 100, 4),
+        "model_name": "GS",
+        "model_version": ctx.get("model_version", "bw-gs-1.0.0"),
+        "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
+    }
+    style = "American" if american else "European"
+    mode = "분리형(독립합산)" if separable else "비분리형(복합격자)"
+    return {
+        "job_id": int(ctx.get("job_id", 0)),
+        "instrument_id": int(ctx.get("instrument_id", 0)),
+        "instrument_type": "BW",
+        "valuation_date": val_date.isoformat(),
+        "status": "DONE",
+        "total_fair_value": round(total, 4),
+        "per_unit_value": round(total, 4),
+        "components": components,
+        "key_parameters": key_parameters,
+        "reproducibility": {
+            "input_hash": ctx.get("input_hash", "0" * 64),
+            "seed": int(ctx.get("seed", 20240101)),
+            "model_version": ctx.get("model_version", "bw-gs-1.0.0"),
+        },
+        "warnings": [{"code": "W210", "message": f"GS(전환확률 가중 할인) 모형 — BW {mode}·{style}·df={df:.4f}. TF 와 값 상이(비분리형)", "stage": "model"}],
         "errors": [],
         "trees": trees,
     }

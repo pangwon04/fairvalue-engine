@@ -26,8 +26,9 @@ from __future__ import annotations
 import math
 from datetime import date
 
-from .cb_calculator import _interp_curve_at
+from .cb_calculator import _interp_curve_at, _year_frac
 from .tf_lattice import CBLatticeSpec, report_steps, tf_value_split, tf_value_with_trees
+from .gs_model import gs_value, gs_value_with_trees
 
 
 def _to_date(s) -> date:
@@ -52,6 +53,9 @@ def _forward_steps(curve_pct: list, t_years: float, steps: int):
 
 
 def calculate_rcps(ctx: dict) -> dict:
+    # ★ 모델 분기점: model=GS 면 Goldman-Sachs 격자(telescoping host/전환/상환). 아니면 기존 C모델 TF(불변).
+    if str(ctx.get("model", "")).upper().startswith("GS"):
+        return calculate_rcps_gs(ctx)
     terms = ctx.get("terms", {})
     market = ctx.get("market", {})
     options = ctx.get("options", {})
@@ -162,6 +166,150 @@ def calculate_rcps(ctx: dict) -> dict:
             "model_version": ctx.get("model_version", "rcps-1.0.0"),
         },
         "warnings": [{"code": "W201", "message": "이벤트형 리픽싱 미반영(발행일 전환가 불변 → 미발동)", "stage": "model"}],
+        "errors": [],
+        "trees": trees,
+    }
+
+
+# ===========================================================================
+# RCPS — Goldman-Sachs 격자 분기 (엔진확장-2, DeepSearch 골든 대상)
+#   GS 는 측도분리(C 모델)를 쓰지 않고 telescoping(순차 marginal)으로 3분할한다:
+#     R0 순수 우선주채권(전환·풋 off, q≡0 → rd 할인) → preferred_share_value(host)
+#     R1 +전환 → conversion_option_value = R1−R0
+#     R2 +상환청구(풋, 보장수익률) → redemption_option_value = R2−R1
+#     total = R2 = host + 전환 + 상환. Σ=total.  (DeepSearch host/전환권/조기상환권 구조)
+#   ★ RCPS TF(C 모델) 경로는 전혀 건드리지 않음(위 calculate_rcps 본문 불변).
+# ===========================================================================
+def calculate_rcps_gs(ctx: dict) -> dict:
+    terms = ctx.get("terms", {})
+    market = ctx.get("market", {})
+    options = ctx.get("options", {})
+    curves = ctx.get("curves", {})
+    rights = ctx.get("rights", {})
+
+    val_date = _to_date(ctx["valuation_date"])
+
+    s0 = float(market["spot"])
+    sigma = float(market["volatility"])
+    sigma = sigma / 100.0 if sigma > 3.0 else sigma
+    q = float(market.get("dividend_yield") or 0.0)
+    q = q / 100.0 if q > 1.0 else q
+
+    issue_price = float(terms.get("issue_price") or terms.get("face_value") or 12500.0)
+    div_rate = float(terms.get("dividend_preferred_rate") or terms.get("coupon_rate") or 0.0)
+    div_rate = div_rate / 100.0 if div_rate > 1.0 else div_rate
+
+    steps = int(options.get("lattice_steps") or 300)
+    node = int(options.get("node_interval_days") or 7)
+
+    # 만기: 날짜 있으면 date 기반, 없으면 steps·node/365.
+    issue_date = _to_date(terms["issue_date"]) if terms.get("issue_date") else None
+    maturity = _to_date(terms["maturity_date"]) if terms.get("maturity_date") else None
+    if maturity is not None:
+        t_years = _year_frac(val_date, maturity)
+    else:
+        t_years = steps * node / 365.0
+
+    # 할인: 커브 만기 zero 보간(평탄). rf=risk_free, rd=credit(위험 전체수익률).
+    rf = (_interp_curve_at(curves.get("risk_free_curve", []), t_years) / 100.0) if curves.get("risk_free_curve") else 0.035
+    rd = (_interp_curve_at(curves.get("credit_curve", []), t_years) / 100.0) if curves.get("credit_curve") else 0.045
+    if rd == 0.0:
+        rd = rf
+
+    conv = rights.get("conversion", {}) or {}
+    conv_price = float(conv.get("strike") or issue_price)
+    conv_ratio = float(conv.get("ratio") or 1.0) * (issue_price / conv_price)
+    conv_start_t = max(0.0, _year_frac(val_date, _to_date(conv["start"]))) if conv.get("start") else 0.0
+
+    # 상환청구권(풋, 보장수익률). 발행일 기준 accrete, 상환청구 시작일부터 행사.
+    put = (rights.get("redemption", {}) or {}).get("put", {}) or {}
+    put_enabled = bool(put.get("enabled")) or bool(put.get("yield"))
+    ytp = float(put.get("yield") or terms.get("redemption_yield") or terms.get("guaranteed_yield") or 0.0)
+    ytp = ytp / 100.0 if ytp > 1.0 else ytp
+    put_date = _to_date(put["start"]) if put.get("start") else maturity
+    base_date = issue_date or val_date
+    if put_date is not None and put_enabled:
+        put_price = issue_price * (1.0 + ytp) ** max(0.0, _year_frac(base_date, put_date))
+        put_start_t = max(0.0, _year_frac(val_date, put_date))
+    else:
+        put_price = 0.0
+        put_start_t = 0.0
+
+    coupon_per_year = div_rate * issue_price
+
+    base = dict(
+        s0=s0, sigma=sigma, t_years=t_years, rf=rf, rd=rd, q=q,
+        face=issue_price, coupon_per_year=coupon_per_year, freq=(1 if coupon_per_year > 0 else 0),
+        conv_ratio=conv_ratio, conv_start_t=conv_start_t,
+        put_price=put_price, put_start_t=put_start_t,
+    )
+
+    def run(conv_on, put_on, st):
+        return gs_value(CBLatticeSpec(
+            steps=st, conv_enabled=conv_on, put_enabled=put_on,
+            call_enabled=False, call_price=0.0, call_start_t=0.0, **base,
+        ))
+
+    r0 = run(False, False, steps)              # 순수 우선주채권 host
+    r1 = run(True, False, steps)               # +전환
+    r2 = run(True, put_enabled, steps)         # +상환청구(풋)
+
+    host = r0
+    conversion = r1 - r0
+    redemption = r2 - r1
+    total = r0 + conversion + redemption       # = r2, Σ=total
+
+    # 보고서용 트리(최종 실행 = 전환+풋, 보고서용 steps).
+    _rsteps = report_steps(t_years, steps)
+    _rb, _re, trees = gs_value_with_trees(CBLatticeSpec(
+        steps=_rsteps, conv_enabled=True, put_enabled=put_enabled,
+        call_enabled=False, call_price=0.0, call_start_t=0.0, **base,
+    ))
+
+    parity = conv_ratio * s0
+    components = {
+        "bond_value": None,
+        "preferred_share_value": round(host, 4),
+        "conversion_option_value": round(conversion, 4),
+        "exchange_option_value": None,
+        "warrant_value": None,
+        "redemption_option_value": round(redemption, 4),
+        "issuer_call_value": 0.0,
+        "sale_claim_value": 0.0,
+        "stock_option_value": None,
+        "conditional_option_value": None,
+        "dilution_effect": 0.0,
+        "total_fair_value": round(total, 4),
+    }
+    key_parameters = {
+        "risk_free_rate": round(rf * 100, 4),
+        "credit_spread": round((rd - rf) * 100, 4),
+        "volatility": round(sigma * 100, 4),
+        "dividend_yield": round(q * 100, 4),
+        "parity": round(parity, 4),
+        "discount_rate": round(rd * 100, 4),
+        "model_name": "GS",
+        "model_version": ctx.get("model_version", "rcps-gs-1.0.0"),
+        "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
+    }
+    return {
+        "job_id": int(ctx.get("job_id", 0)),
+        "instrument_id": int(ctx.get("instrument_id", 0)),
+        "instrument_type": "RCPS",
+        "valuation_date": val_date.isoformat(),
+        "status": "DONE",
+        "total_fair_value": round(total, 4),
+        "per_unit_value": round(total, 4),
+        "components": components,
+        "key_parameters": key_parameters,
+        "reproducibility": {
+            "input_hash": ctx.get("input_hash", "0" * 64),
+            "seed": int(ctx.get("seed", 20240101)),
+            "model_version": ctx.get("model_version", "rcps-gs-1.0.0"),
+        },
+        "warnings": [{"code": "W210", "message": "GS(전환확률 가중 할인) 모형 — host/전환/상환 telescoping 3분할. C모델(TF)과 값 상이(정상)", "stage": "model"}],
         "errors": [],
         "trees": trees,
     }

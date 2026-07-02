@@ -25,6 +25,7 @@ import math
 from datetime import date
 
 from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees
+from .gs_model import gs_value, gs_value_with_trees
 
 
 def _to_date(s) -> date:
@@ -68,6 +69,9 @@ def _rates_from_curves(ctx: dict, t_years: float) -> tuple[float, float]:
 
 
 def calculate_cb(ctx: dict) -> dict:
+    # ★ 모델 분기점: model=GS 면 Goldman-Sachs 격자. 아니면 기존 TF(불변).
+    if str(ctx.get("model", "")).upper().startswith("GS"):
+        return calculate_cb_gs(ctx)
     terms = ctx.get("terms", {})
     market = ctx.get("market", {})
     rights = ctx.get("rights", {})
@@ -253,3 +257,155 @@ def _solve_ytm(price: float, coupon_per_year: float, freq: int, face: float, t: 
         else:
             hi = mid
     return (lo + hi) / 2
+
+
+# ===========================================================================
+# CB — Goldman-Sachs 격자 분기 (엔진확장-2)
+#   TF 와 동일 입력·telescoping(순차 marginal, Σ=total)이되 할인만 GS(전환확률 가중).
+#   할인율을 노드별 y=q·rf+(1−q)·rd 로 정하므로 값은 TF 와 다를 수 있음(모형 상이=정상).
+#   파싱은 calculate_cb 와 동일(TF 경로 불변 위해 재구현·격리).
+# ===========================================================================
+def calculate_cb_gs(ctx: dict) -> dict:
+    terms = ctx.get("terms", {})
+    market = ctx.get("market", {})
+    rights = ctx.get("rights", {})
+    options = ctx.get("options", {})
+
+    val_date = _to_date(ctx["valuation_date"])
+    issue_date = _to_date(terms["issue_date"])
+    maturity = _to_date(terms["maturity_date"])
+    t_years = _year_frac(val_date, maturity)
+
+    s0 = float(market["spot"])
+    sigma = float(market["volatility"]) / 100.0
+    q = float(market.get("dividend_yield") or 0.0) / 100.0
+    face = float(terms.get("face_value") or 10000.0)
+    steps = int(options.get("lattice_steps") or 1000)
+
+    rf, rd = _rates_from_curves(ctx, t_years)
+
+    freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
+    coupon_per_year = (float(terms.get("coupon_rate") or 0.0) / 100.0) * face
+
+    conv = rights.get("conversion", {})
+    conv_strike = float(conv.get("strike") or s0)
+    conv_ratio_mult = float(conv.get("ratio") or 1.0)
+    shares_per_bond = conv_ratio_mult * face / conv_strike
+    conv_start_t = max(0.0, _year_frac(val_date, _to_date(conv["start"]))) if conv.get("start") else 0.0
+    parity = shares_per_bond * s0
+
+    put = (rights.get("redemption", {}) or {}).get("put", {}) or {}
+    put_enabled = bool(put.get("enabled"))
+    ytp = float(put.get("yield") or terms.get("guaranteed_yield") or 0.0) / 100.0
+    put_date = _to_date(put["start"]) if put.get("start") else maturity
+    put_price = face * (1.0 + ytp) ** max(0.0, _year_frac(issue_date, put_date))
+    put_start_t = max(0.0, _year_frac(val_date, put_date)) if put.get("start") else 0.0
+
+    call = (rights.get("redemption", {}) or {}).get("call", {}) or {}
+    call_enabled = bool(call.get("enabled"))
+    call_price = face
+
+    sc = rights.get("sale_claim", {}) or {}
+    sc_enabled = bool(sc.get("enabled"))
+    sc_price = face * (float(sc.get("strike_pct") or 100.0) / 100.0)
+
+    base = dict(
+        s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf, rd=rd, q=q,
+        face=face, coupon_per_year=coupon_per_year, freq=freq,
+        conv_ratio=shares_per_bond, conv_start_t=conv_start_t,
+        put_price=put_price, put_start_t=put_start_t,
+    )
+
+    def run(conv_on, put_on, call_on, call_price_, call_start_):
+        return gs_value(CBLatticeSpec(
+            conv_enabled=conv_on, put_enabled=put_on, call_enabled=call_on,
+            call_price=call_price_, call_start_t=call_start_, **base,
+        ))
+
+    r0 = run(False, False, False, 0.0, 0.0)
+    r1 = run(True, False, False, 0.0, 0.0)
+    r2 = run(True, put_enabled, False, 0.0, 0.0)
+    r3 = run(True, put_enabled, call_enabled, call_price, 0.0)
+    r4 = run(True, put_enabled, call_enabled or sc_enabled,
+             (sc_price if sc_enabled else call_price), 0.0)
+    r5 = r4
+
+    bond_value = r0
+    conversion_option_value = r1 - r0
+    redemption_option_value = r2 - r1
+    issuer_call_value = r3 - r2
+    sale_claim_value = r4 - r3
+    dilution_effect = r5 - r4
+
+    def clamp_neg(x):
+        return min(0.0, x) if x < 1e-9 else 0.0
+    issuer_call_value = clamp_neg(issuer_call_value)
+    sale_claim_value = clamp_neg(sale_claim_value)
+    dilution_effect = clamp_neg(dilution_effect)
+    total = (bond_value + conversion_option_value + redemption_option_value
+             + issuer_call_value + sale_claim_value + dilution_effect)
+
+    warnings = [{"code": "W210", "message": "GS(전환확률 가중 할인) 모형 — 노드별 y=q·rf+(1−q)·rd. TF 와 값 상이(정상)", "stage": "model"}]
+    if (rights.get("refixing", {}) or {}).get("enabled"):
+        warnings.append({"code": "W201", "message": "리픽싱(경로의존) 미반영 — 격자 근사(LSMC 권장)", "stage": "model"})
+
+    components = {
+        "bond_value": round(bond_value, 4),
+        "preferred_share_value": None,
+        "conversion_option_value": round(conversion_option_value, 4),
+        "exchange_option_value": None,
+        "warrant_value": None,
+        "redemption_option_value": round(redemption_option_value, 4),
+        "issuer_call_value": round(issuer_call_value, 4),
+        "sale_claim_value": round(sale_claim_value, 4),
+        "stock_option_value": None,
+        "conditional_option_value": None,
+        "dilution_effect": round(dilution_effect, 4),
+        "total_fair_value": round(total, 4),
+    }
+
+    ytm = _solve_ytm(r0, coupon_per_year, freq, face, t_years)
+
+    rsteps = report_steps(t_years, steps)
+    base_report = dict(base)
+    base_report["steps"] = rsteps
+    _twb, _twe, trees = gs_value_with_trees(CBLatticeSpec(
+        conv_enabled=True, put_enabled=put_enabled,
+        call_enabled=call_enabled or sc_enabled,
+        call_price=(sc_price if sc_enabled else call_price), call_start_t=0.0, **base_report,
+    ))
+
+    key_parameters = {
+        "risk_free_rate": round(rf * 100, 4),
+        "ytm": round(ytm * 100, 4) if ytm is not None else None,
+        "credit_spread": round((rd - rf) * 100, 4),
+        "volatility": round(sigma * 100, 4),
+        "dividend_yield": round(q * 100, 4),
+        "parity": round(parity, 4),
+        "discount_rate": round(rd * 100, 4),
+        "model_name": "GS",
+        "model_version": ctx.get("model_version", "cb-gs-1.0.0"),
+        "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
+    }
+
+    return {
+        "job_id": int(ctx.get("job_id", 0)),
+        "instrument_id": int(ctx.get("instrument_id", 0)),
+        "instrument_type": "CB",
+        "valuation_date": val_date.isoformat(),
+        "status": "DONE",
+        "total_fair_value": round(total, 4),
+        "per_unit_value": round(total, 4),
+        "components": components,
+        "key_parameters": key_parameters,
+        "reproducibility": {
+            "input_hash": ctx.get("input_hash", "0" * 64),
+            "seed": int(ctx.get("seed", 20240101)),
+            "model_version": ctx.get("model_version", "cb-gs-1.0.0"),
+        },
+        "warnings": warnings,
+        "errors": [],
+        "trees": trees,
+    }

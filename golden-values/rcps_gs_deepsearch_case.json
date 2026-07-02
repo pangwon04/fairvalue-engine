@@ -1,0 +1,51 @@
+{
+  "_meta": {
+    "source": "DeepSearch RCPS 평가보고서(GS 모형) — 식별정보 제외, 검증용 수치만",
+    "instrument_type": "RCPS",
+    "model": "Goldman-Sachs (전환확률 가중 할인, probability-of-conversion-weighted discounting)",
+    "purpose": "엔진확장-2 GS 모형 ★비차단 진단 참고값(외부 데모 문서). BLOCKING 아님.",
+    "status": "DEMOTED_NON_BLOCKING",
+    "internal_contradictions": [
+      "문서 자체 Kd 로 host(9,653.56) 재현 불가 — 제시 커브와 host 가 상충.",
+      "'7일 간격 42노드'(≈0.8y)와 만기 5.75y 의 노드수 불일치.",
+      "풋(상환청구) 규약(par vs 5% accrete, 만기 적용 여부) 모호."
+    ],
+    "tolerance": {
+      "host_relative_blocking": 0.005,
+      "note": "골든 강등 → total·전환권·상환권은 참고 print 만. host(=preferred_share_value≈par·e^{-Rd·T} 닫힌형)만 ±0.5% assert(규약 판정 근거). 실 검증은 ①항등식+②모비어스 일관성이 담당."
+    },
+    "inputs": {
+      "spot": 10000,
+      "conversion_price": 12500,
+      "issue_price": 12500,
+      "volatility": 0.50,
+      "historical_dividend": 0.0,
+      "redemption_claim_rate": 0.05,
+      "credit_grade": "AAA",
+      "issue_date": "2022-12-31",
+      "maturity_date": "2028-09-30",
+      "redemption_claim_period": { "start": "2027-12-31", "end": "2028-09-30" },
+      "node_interval_days": 7,
+      "curve_note": "Rf/Kd bootstrapping(보고서). 우리는 AAA 2022 평탄 근사."
+    }
+  },
+  "cases": [
+    {
+      "fixture_id": "rcps_gs_deepsearch",
+      "valuation_date": "2022-12-31",
+      "expected": {
+        "per_unit": {
+          "total_fair_value": 14132.54,
+          "host": 9653.56,
+          "redemption_option": 413.78,
+          "conversion_option": 4065.20
+        },
+        "component_mapping": {
+          "preferred_share_value": 9653.56,
+          "redemption_option_value": 413.78,
+          "conversion_option_value": 4065.20
+        }
+      }
+    }
+  ]
+}

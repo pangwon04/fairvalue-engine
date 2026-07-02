@@ -24,6 +24,7 @@ from datetime import date
 
 from .cb_calculator import _interp_curve_at
 from .tf_lattice import CBLatticeSpec, report_steps, tf_value_split, tf_value_with_trees
+from .gs_model import gs_value, gs_value_with_trees
 
 PERP_HORIZON_YEARS = 50.0   # 영구형 격자 절단 horizon(가정)
 
@@ -49,6 +50,9 @@ def _forward_steps(curve_pct: list, t_years: float, steps: int):
 
 
 def calculate_cps(ctx: dict) -> dict:
+    # ★ 모델 분기점: model=GS 면 Goldman-Sachs 격자(host/전환 telescoping). 아니면 기존 C모델 TF(불변).
+    if str(ctx.get("model", "")).upper().startswith("GS"):
+        return calculate_cps_gs(ctx)
     terms = ctx.get("terms", {})
     market = ctx.get("market", {})
     options = ctx.get("options", {})
@@ -162,6 +166,125 @@ def calculate_cps(ctx: dict) -> dict:
             "model_version": ctx.get("model_version", "cps-1.0.0"),
         },
         "warnings": [{"code": "W202", "message": f"CPS host_type={host_type} (perpetual=horizon {PERP_HORIZON_YEARS}y Gordon 근사). 외부 실보고서 미검증(self-consistency/골든/MC 교차검증으로 보증)", "stage": "model"}],
+        "errors": [],
+        "trees": trees,
+    }
+
+
+# ===========================================================================
+# CPS — Goldman-Sachs 격자 분기 (엔진확장-2)
+#   CPS = RCPS − 상환권. GS telescoping 2분할:
+#     R0 순수 우선주채권(전환 off, q≡0 → rd 할인) → preferred_share_value(host)
+#     R1 +전환 → conversion_option_value = R1−R0.  total = R1 = host + 전환. Σ=total.
+#   할인만 GS(전환확률 가중). CPS TF(C 모델) 경로 불변.
+# ===========================================================================
+def calculate_cps_gs(ctx: dict) -> dict:
+    terms = ctx.get("terms", {})
+    market = ctx.get("market", {})
+    options = ctx.get("options", {})
+    curves = ctx.get("curves", {})
+    rights = ctx.get("rights", {})
+
+    val_date = _to_date(ctx["valuation_date"])
+
+    s0 = float(market["spot"])
+    sigma = float(market["volatility"])
+    sigma = sigma / 100.0 if sigma > 3.0 else sigma
+    q = float(market.get("dividend_yield") or 0.0)
+    q = q / 100.0 if q > 1.0 else q
+
+    issue_price = float(terms.get("issue_price") or terms.get("face_value") or 10000.0)
+    div_rate = float(terms.get("dividend_preferred_rate") or terms.get("dividend_rate")
+                     or terms.get("coupon_rate") or 0.0)
+    div_rate = div_rate / 100.0 if div_rate > 1.0 else div_rate
+
+    host_type = str(terms.get("host_type") or "dated").lower()
+    steps = int(options.get("lattice_steps") or 120)
+    node = int(options.get("node_interval_days") or 30)
+
+    if host_type == "perpetual":
+        t_years = PERP_HORIZON_YEARS
+    else:
+        t_years = steps * node / 360.0
+
+    rf = (_interp_curve_at(curves.get("risk_free_curve", []), t_years) / 100.0) if curves.get("risk_free_curve") else 0.03
+    rd = (_interp_curve_at(curves.get("credit_curve", []), t_years) / 100.0) if curves.get("credit_curve") else 0.07
+    if rd == 0.0:
+        rd = rf
+
+    div_amt = div_rate * issue_price
+    if host_type == "perpetual":
+        redemption_face = (div_amt / rd) if rd > 0 else issue_price
+    else:
+        redemption_face = issue_price
+
+    conv = rights.get("conversion", {}) or {}
+    conv_price = float(conv.get("strike") or issue_price)
+    conv_ratio = float(conv.get("ratio") or 1.0) * (issue_price / conv_price)
+
+    base = dict(
+        s0=s0, sigma=sigma, t_years=t_years, rf=rf, rd=rd, q=q,
+        face=redemption_face, coupon_per_year=div_amt, freq=(1 if div_amt > 0 else 0),
+        conv_ratio=conv_ratio, conv_start_t=0.0,
+        put_enabled=False, call_enabled=False,
+    )
+
+    def run(conv_on, st):
+        return gs_value(CBLatticeSpec(steps=st, conv_enabled=conv_on, **base))
+
+    r0 = run(False, steps)     # host
+    r1 = run(True, steps)      # +전환
+    host = r0
+    conversion = r1 - r0
+    total = r1
+
+    _rsteps = report_steps(t_years, steps)
+    _rb, _re, trees = gs_value_with_trees(CBLatticeSpec(steps=_rsteps, conv_enabled=True, **base))
+
+    parity = conv_ratio * s0
+    components = {
+        "bond_value": None,
+        "preferred_share_value": round(host, 4),
+        "conversion_option_value": round(conversion, 4),
+        "exchange_option_value": None,
+        "warrant_value": None,
+        "redemption_option_value": 0.0,
+        "issuer_call_value": 0.0,
+        "sale_claim_value": 0.0,
+        "stock_option_value": None,
+        "conditional_option_value": None,
+        "dilution_effect": 0.0,
+        "total_fair_value": round(total, 4),
+    }
+    key_parameters = {
+        "risk_free_rate": round(rf * 100, 4),
+        "credit_spread": round((rd - rf) * 100, 4),
+        "volatility": round(sigma * 100, 4),
+        "dividend_yield": round(q * 100, 4),
+        "parity": round(parity, 4),
+        "discount_rate": round(rd * 100, 4),
+        "model_name": "GS",
+        "model_version": ctx.get("model_version", "cps-gs-1.0.0"),
+        "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
+    }
+    return {
+        "job_id": int(ctx.get("job_id", 0)),
+        "instrument_id": int(ctx.get("instrument_id", 0)),
+        "instrument_type": "CPS",
+        "valuation_date": val_date.isoformat(),
+        "status": "DONE",
+        "total_fair_value": round(total, 4),
+        "per_unit_value": round(total, 4),
+        "components": components,
+        "key_parameters": key_parameters,
+        "reproducibility": {
+            "input_hash": ctx.get("input_hash", "0" * 64),
+            "seed": int(ctx.get("seed", 20240101)),
+            "model_version": ctx.get("model_version", "cps-gs-1.0.0"),
+        },
+        "warnings": [{"code": "W210", "message": f"GS(전환확률 가중 할인) 모형 — CPS host_type={host_type}. C모델(TF)과 값 상이(정상)", "stage": "model"}],
         "errors": [],
         "trees": trees,
     }

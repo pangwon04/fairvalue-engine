@@ -1,0 +1,32 @@
+{
+  "_note": "★비차단(진단 전용). DeepSearch 데모 문서는 내부 모순 확인됨: (1) 문서 자체 Kd 로 host 재현 불가, (2) '7일간격 42노드' vs 만기 5.75y 의 노드수 불일치, (3) 풋(상환) 규약 모호. → 골든을 비차단 참고로 강등(test_gs.py ③은 host ±0.5% 만 assert, total/전환권/상환권은 print). host 는 순수채권 par·e^{-Rd·T} 닫힌형이라 규약 판정 근거로만 사용. 커브는 우리 가정(AAA 2022: Rf 3.5%/Rd 4.5% 평탄). GS(전환확률 가중 할인) telescoping 3분할: host+전환+상환. 입력: 기초자산 10000·전환가/발행가 12500·변동성 50%·과거배당 0%·상환청구이자율 5%·AAA·발행 2022-12-31·만기 2028-09-30·상환청구 2027-12-31~.",
+  "instrument_type": "RCPS",
+  "valuation_date": "2022-12-31",
+  "instrument_id": 7001,
+  "job_id": 1,
+  "model": "GS",
+  "seed": 20240101,
+  "model_version": "rcps-gs-1.0.0",
+  "terms": {
+    "issue_date": "2022-12-31",
+    "maturity_date": "2028-09-30",
+    "issue_price": 12500,
+    "face_value": 12500,
+    "dividend_preferred_rate": 0.0,
+    "redemption_yield": 0.05
+  },
+  "rights": {
+    "conversion": { "strike": 12500, "ratio": 1, "start": "2022-12-31", "end": "2028-09-30" },
+    "redemption": { "put": { "enabled": true, "yield": 0.05, "start": "2027-12-31" } },
+    "refixing": { "enabled": false }
+  },
+  "market": { "spot": 10000, "volatility": 0.50, "dividend_yield": 0.0 },
+  "options": { "lattice_steps": 300, "node_interval_days": 7 },
+  "curves": {
+    "risk_free_curve": [[0.25,3.5],[1.0,3.5],[3.0,3.5],[5.0,3.5],[10.0,3.5]],
+    "credit_curve": [[0.25,4.5],[1.0,4.5],[3.0,4.5],[5.0,4.5],[10.0,4.5]],
+    "curve_source": "가정_AAA_2022(평탄)",
+    "curve_version": "v1",
+    "interpolation_method": "LINEAR"
+  }
+}
