@@ -219,3 +219,140 @@ def tf_value_split(spec: CBLatticeSpec, rf_steps=None, rd_steps=None) -> tuple[f
         Vb, Ve = nVb, nVe
 
     return Vb[0], Ve[0]
+
+
+# ===========================================================================
+# Phase 엔진확장-1: 보고서용 트리·위험중립확률 반환 (하위호환 추가)
+#   - tf_value_split 과 동일 로직이되 매 스텝의 노드값을 저장(덮어쓰지 않음).
+#   - 반환: 루트 (Vb0, Ve0) + trees dict(정방향 step 0→n 정렬, 상삼각 외 None).
+#   - 회귀 게이트: 동일 spec 에서 루트(Vb0+Ve0) == tf_value(spec) (1e-6).
+# ===========================================================================
+def report_steps(t_years: float, user_steps: int,
+                 interval_days: int = 30, lo: int = 20, hi: int = 250) -> int:
+    """보고서용 트리 스텝 수. 30일 간격 환산(t·365/interval)에 하한/상한 가드.
+    사용자 steps 보다 크지 않게(작으면 사용자 값). 저장 가능한 크기로 제한."""
+    approx = int(round(t_years * 365.0 / interval_days))
+    approx = max(lo, min(hi, approx))
+    return max(1, min(user_steps, approx))
+
+
+def tf_value_with_trees(spec: CBLatticeSpec, rf_steps=None, rd_steps=None):
+    """tf_value_split 과 동일 계산 + 스텝별 트리 저장.
+    반환: (Vb0, Ve0, trees). trees = underlying/equity/debt/composite/risk_neutral_prob/tree_meta.
+    각 트리는 [step][j] 정방향(0→n), 상삼각 외(j>step)는 None 로 패딩(보고서 표 방향)."""
+    n = spec.steps
+    dt = spec.t_years / n
+    u = math.exp(spec.sigma * math.sqrt(dt))
+    d = 1.0 / u
+    u2 = u * u
+    cpn = (spec.coupon_per_year / spec.freq) if spec.freq > 0 else 0.0
+    coupon_at = _coupon_steps(spec, dt)
+
+    def rf_at(step):
+        return rf_steps[step] if rf_steps is not None else spec.rf
+
+    def rd_at(step):
+        return rd_steps[step] if rd_steps is not None else spec.rd
+
+    # 스텝별 저장(index = step). und[step] 등 길이 = step+1.
+    und_by_step = [None] * (n + 1)
+    eq_by_step = [None] * (n + 1)
+    db_by_step = [None] * (n + 1)
+    probs = [None] * n
+
+    # 만기(step=n) payoff
+    Vb = [0.0] * (n + 1)
+    Ve = [0.0] * (n + 1)
+    und_n = []
+    s = spec.s0 * (d ** n)
+    for j in range(n + 1):
+        und_n.append(s)
+        redemption = spec.face + cpn
+        conv = spec.conv_ratio * s if spec.conv_enabled else -1.0
+        if conv >= redemption:
+            Ve[j] = conv
+            Vb[j] = 0.0
+        else:
+            Vb[j] = redemption
+            Ve[j] = 0.0
+        s *= u2
+    und_by_step[n] = und_n
+    eq_by_step[n] = Ve[:]
+    db_by_step[n] = Vb[:]
+
+    for step in range(n - 1, -1, -1):
+        rf = rf_at(step)
+        rd = rd_at(step)
+        p = (math.exp((rf - spec.q) * dt) - d) / (u - d)
+        probs[step] = p
+        disc_e = math.exp(-rf * dt)
+        disc_b = math.exp(-rd * dt)
+        nVb = [0.0] * (step + 1)
+        nVe = [0.0] * (step + 1)
+        und_step = [0.0] * (step + 1)
+        t = step * dt
+        s = spec.s0 * (d ** step)
+        for j in range(step + 1):
+            und_step[j] = s
+            cb = disc_b * (p * Vb[j + 1] + (1 - p) * Vb[j])
+            ce = disc_e * (p * Ve[j + 1] + (1 - p) * Ve[j])
+            if step in coupon_at:
+                cb += cpn
+            val_b, val_e = cb, ce
+            if spec.conv_enabled and t >= spec.conv_start_t - 1e-12:
+                conv = spec.conv_ratio * s
+                if conv >= val_b + val_e:
+                    val_b, val_e = 0.0, conv
+            if spec.put_enabled and t >= spec.put_start_t - 1e-12:
+                if spec.put_price > val_b + val_e:
+                    val_b, val_e = spec.put_price, 0.0
+            if spec.call_enabled and t >= spec.call_start_t - 1e-12:
+                cur = val_b + val_e
+                if cur > spec.call_price:
+                    conv = spec.conv_ratio * s if spec.conv_enabled else 0.0
+                    if conv >= spec.call_price:
+                        val_b, val_e = 0.0, conv
+                    else:
+                        val_b, val_e = spec.call_price, 0.0
+            nVb[j] = val_b
+            nVe[j] = val_e
+            s *= u2
+        und_by_step[step] = und_step
+        eq_by_step[step] = nVe[:]
+        db_by_step[step] = nVb[:]
+        Vb, Ve = nVb, nVe
+
+    # 정방향·상삼각 패딩(j>step → None). 값은 4자리 반올림(크기·가독).
+    def pad(rows):
+        out = []
+        for st in range(n + 1):
+            row = rows[st] or []
+            out.append([round(v, 4) for v in row] + [None] * (n - st))
+        return out
+
+    underlying = pad(und_by_step)
+    equity = pad(eq_by_step)
+    debt = pad(db_by_step)
+    composite = [
+        [
+            (round(db_by_step[st][j] + eq_by_step[st][j], 4) if j <= st else None)
+            for j in range(n + 1)
+        ]
+        for st in range(n + 1)
+    ]
+    prob = [{"step": st, "p": round(probs[st], 6), "q": round(1 - probs[st], 6)} for st in range(n)]
+    trees = {
+        "underlying_tree": underlying,
+        "equity_tree": equity,
+        "debt_tree": debt,
+        "composite_tree": composite,
+        "risk_neutral_prob": prob,
+        "tree_meta": {
+            "steps_used": n,
+            "dt": round(dt, 6),
+            "u": round(u, 6),
+            "d": round(d, 6),
+            "display_nodes": 11,
+        },
+    }
+    return Vb[0], Ve[0], trees

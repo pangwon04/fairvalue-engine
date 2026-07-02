@@ -27,7 +27,7 @@ import math
 from datetime import date
 
 from .cb_calculator import _interp_curve_at
-from .tf_lattice import CBLatticeSpec, tf_value_split
+from .tf_lattice import CBLatticeSpec, report_steps, tf_value_split, tf_value_with_trees
 
 
 def _to_date(s) -> date:
@@ -96,9 +96,9 @@ def calculate_rcps(ctx: dict) -> dict:
     #   - total: 전환 underlying 에 q_conv 적용한 TF 의 (Vb+Ve). embedded = total − host.
     q_conv = max(0.0, div_rate - q)   # 우선배당 − 보통주배당
 
-    def _spec(qd):
+    def _spec(qd, st=steps):
         return CBLatticeSpec(
-            s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf_flat, rd=rd_flat, q=qd,
+            s0=s0, sigma=sigma, t_years=t_years, steps=st, rf=rf_flat, rd=rd_flat, q=qd,
             face=issue_price,                          # 만기 par 상환(floor)
             coupon_per_year=div_rate * issue_price, freq=1,   # 우선배당(연 1회) → Vb
             conv_enabled=True, conv_ratio=conv_ratio, conv_start_t=0.0,
@@ -110,6 +110,10 @@ def calculate_rcps(ctx: dict) -> dict:
     # total = 전환 underlying 에 q_conv 적용(전환 carry cost) 한 TF 전체.
     tvb, tve = tf_value_split(_spec(q_conv), rf_steps=rf_steps, rd_steps=rd_steps)
     total = tvb + tve
+
+    # 보고서용 트리(최종 실행 = q_conv 적용 TF, 보고서용 steps·평탄할인). 12키 값 불변.
+    _rsteps = report_steps(t_years, steps)
+    _rb, _re, trees = tf_value_with_trees(_spec(q_conv, _rsteps))
 
     preferred = host_vb
     conversion = total - host_vb   # embedded = total − host (Σ=total 자동)
@@ -139,6 +143,8 @@ def calculate_rcps(ctx: dict) -> dict:
         "model_name": "TF_LATTICE",
         "model_version": ctx.get("model_version", "rcps-1.0.0"),
         "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
     }
     return {
         "job_id": int(ctx.get("job_id", 0)),
@@ -157,4 +163,5 @@ def calculate_rcps(ctx: dict) -> dict:
         },
         "warnings": [{"code": "W201", "message": "이벤트형 리픽싱 미반영(발행일 전환가 불변 → 미발동)", "stage": "model"}],
         "errors": [],
+        "trees": trees,
     }

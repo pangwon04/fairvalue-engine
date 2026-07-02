@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 
 from .cb_calculator import _rates_from_curves, _solve_ytm, _to_date, _year_frac
-from .tf_lattice import CBLatticeSpec, tf_value, crr_params, _coupon_steps
+from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees, crr_params, _coupon_steps
 
 
 def _standalone_call(s0, K, sigma, T, rf, q, steps, shares, df, american, w_start_t, w_end_t):
@@ -191,6 +191,15 @@ def calculate_bw(ctx: dict) -> dict:
     if dilution_effect > 0:                          # 부호 규칙(희석≤0) 수치노이즈 스냅
         dilution_effect = 0.0
 
+    # 보고서용 트리 — 기초자산(자사주)·가치 시각화. TF 격자 표현(행사가·희석·분리형은 12키 값에 반영).
+    _rsteps = report_steps(t_years, steps)
+    _rb, _re, trees = tf_value_with_trees(CBLatticeSpec(
+        s0=s0, sigma=sigma, t_years=t_years, steps=_rsteps, rf=rf, rd=rd, q=q,
+        face=face, coupon_per_year=coupon_per_year, freq=freq,
+        conv_enabled=True, conv_ratio=quantity, conv_start_t=(w_start_t if american else t_years),
+        put_enabled=put_on, put_price=put_price, put_start_t=put_start_t,
+    ))
+
     components = {
         "bond_value": round(bond_value, 4),
         "preferred_share_value": None,
@@ -217,6 +226,8 @@ def calculate_bw(ctx: dict) -> dict:
         "model_name": "TF_LATTICE",
         "model_version": ctx.get("model_version", "bw-1.0.0"),
         "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
     }
     style = "American" if american else "European"
     mode = "분리형(독립합산)" if separable else "비분리형(복합격자)"
@@ -237,4 +248,5 @@ def calculate_bw(ctx: dict) -> dict:
         },
         "warnings": [{"code": "W204", "message": f"BW {mode}·{style} 행사·df={df:.4f}(페이오프 희석 3.4.1.4). 외부 실보고서 미검증(self-consistency/골든/MC/CB정합성으로 보증)", "stage": "model"}],
         "errors": [],
+        "trees": trees,
     }

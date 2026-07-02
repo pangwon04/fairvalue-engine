@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 from datetime import date
 
-from .tf_lattice import CBLatticeSpec, tf_value
+from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees
 
 
 def _to_date(s) -> date:
@@ -181,6 +181,16 @@ def calculate_cb(ctx: dict) -> dict:
     # ytm: 순수채권(R0) 을 가격으로 보는 연속복리 IRR (참고값).
     ytm = _solve_ytm(r0, coupon_per_year, freq, face, t_years)
 
+    # 보고서용 트리(최종 완전실행 r4 조건, 보고서용 steps). 값 12키는 위에서 사용자 steps 로 이미 산출(불변).
+    rsteps = report_steps(t_years, steps)
+    base_report = dict(base)
+    base_report["steps"] = rsteps
+    _twb, _twe, trees = tf_value_with_trees(CBLatticeSpec(
+        conv_enabled=True, put_enabled=put_enabled,
+        call_enabled=call_enabled or sc_enabled,
+        call_price=(sc_price if sc_enabled else call_price), call_start_t=0.0, **base_report,
+    ))
+
     key_parameters = {
         "risk_free_rate": round(rf * 100, 4),
         "ytm": round(ytm * 100, 4) if ytm is not None else None,
@@ -192,6 +202,8 @@ def calculate_cb(ctx: dict) -> dict:
         "model_name": "TF_LATTICE",
         "model_version": ctx.get("model_version", "cb-1.0.0"),
         "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
     }
 
     return {
@@ -211,6 +223,7 @@ def calculate_cb(ctx: dict) -> dict:
         },
         "warnings": warnings,
         "errors": [],
+        "trees": trees,
     }
 
 

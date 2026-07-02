@@ -92,6 +92,8 @@ class KeyParameters(BaseModel):
     model_version: str
     simulation_paths: Optional[int] = None
     lattice_steps: Optional[int] = None
+    u: Optional[float] = None            # 보고서 트리: 주가 상승계수(하위호환 추가)
+    d: Optional[float] = None            # 보고서 트리: 주가 하락계수(하위호환 추가)
 
 
 class AuditData(BaseModel):
@@ -140,6 +142,7 @@ class PricingResult(BaseModel):
     reproducibility: Reproducibility
     warnings: list[Issue] = Field(default_factory=list)
     errors: list[Issue] = Field(default_factory=list)
+    trees: Optional[dict] = None        # 보고서용 트리(underlying/equity/debt/composite/prob/meta). 하위호환.
 
     @model_validator(mode="after")
     def _check_top_total_matches_components(self) -> "PricingResult":

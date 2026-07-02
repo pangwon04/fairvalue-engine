@@ -28,7 +28,7 @@ from __future__ import annotations
 from datetime import date
 
 from .cb_calculator import _rates_from_curves, _solve_ytm, _to_date, _year_frac
-from .tf_lattice import CBLatticeSpec, tf_value
+from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees
 
 
 def calculate_eb(ctx: dict) -> dict:
@@ -95,6 +95,14 @@ def calculate_eb(ctx: dict) -> dict:
     r1 = run(True, False)                  # +교환(타사주)
     r2 = run(True, put_enabled)            # +풋
 
+    # 보고서용 트리(최종 실행 = 교환 on + 풋, 보고서용 steps). 12키 값 불변.
+    _rsteps = report_steps(t_years, steps)
+    _base_r = dict(base); _base_r["steps"] = _rsteps
+    _rb, _re, trees = tf_value_with_trees(CBLatticeSpec(
+        conv_enabled=True, put_enabled=put_enabled, call_enabled=False,
+        call_price=0.0, call_start_t=0.0, **_base_r,
+    ))
+
     bond_value = r0
     exchange_option_value = r1 - r0
     redemption_option_value = r2 - r1
@@ -127,6 +135,8 @@ def calculate_eb(ctx: dict) -> dict:
         "model_name": "TF_LATTICE",
         "model_version": ctx.get("model_version", "eb-1.0.0"),
         "lattice_steps": steps,
+        "u": trees["tree_meta"]["u"],
+        "d": trees["tree_meta"]["d"],
     }
     src_kind = "target_market(명시입력)" if tgt else "ctx.market(fallback)"
     return {
@@ -146,4 +156,5 @@ def calculate_eb(ctx: dict) -> dict:
         },
         "warnings": [{"code": "W203", "message": f"EB 교환옵션 underlying={src_kind}(타사주, 비상장 명시입력 전제). 상관관계 미반영. 외부 실보고서 미검증(self-consistency/골든/MC/CB정합성으로 보증)", "stage": "model"}],
         "errors": [],
+        "trees": trees,
     }
