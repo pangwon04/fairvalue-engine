@@ -66,7 +66,7 @@
         "fallback_policy": { "enum": ["nearest_grade", "manual_only", "error"] }
       }
     },
-    "model": { "enum": ["TF_LATTICE", "LATTICE", "MONTE_CARLO", "LSMC", "BSM", "DCF"] },
+    "model": { "enum": ["TF_LATTICE", "LATTICE", "GS", "MONTE_CARLO", "LSMC", "BSM", "DCF"] },
     "seed": { "type": "integer" },
     "model_version": { "type": ["string", "null"], "description": "draft 단계에서는 미요구" },
     "options": { "type": "object", "additionalProperties": true },

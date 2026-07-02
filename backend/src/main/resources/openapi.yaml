@@ -819,8 +819,8 @@ components:
       enum: [RCPS, CPS, CB, EB, BW, SO, CSO]
     ModelName:
       type: string
-      description: 'TRINOMIAL 없음(미사용).'
-      enum: [TF_LATTICE, LATTICE, MONTE_CARLO, LSMC, BSM, DCF]
+      description: 'TRINOMIAL 없음(미사용). GS=Goldman-Sachs 전환확률 가중 할인(엔진확장-2, additive).'
+      enum: [TF_LATTICE, LATTICE, GS, MONTE_CARLO, LSMC, BSM, DCF]
     ExerciseStyle:
       type: string
       enum: [AMERICAN, EUROPEAN, BERMUDAN]

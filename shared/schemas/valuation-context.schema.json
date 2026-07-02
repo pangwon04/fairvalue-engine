@@ -82,7 +82,7 @@
         "fallback_policy": { "enum": ["nearest_grade", "manual_only", "error"] }
       }
     },
-    "model": { "enum": ["TF_LATTICE", "LATTICE", "MONTE_CARLO", "LSMC", "BSM", "DCF"] },
+    "model": { "enum": ["TF_LATTICE", "LATTICE", "GS", "MONTE_CARLO", "LSMC", "BSM", "DCF"] },
     "seed": { "type": "integer" },
     "input_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "model_version": { "type": "string", "description": "예: cb-1.0.0" },
