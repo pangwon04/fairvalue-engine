@@ -17,9 +17,11 @@ const fmt = (n: number | null | undefined) =>
 
 export function ResultView({ result }: { result: PricingResult }) {
   const c = result.components;
-  const sum = SUM_KEYS.reduce((a, k) => a + ((c as any)[k] ?? 0), 0);
+  const sum = SUM_KEYS.reduce((a, k) => a + (((c as unknown as Record<string, number | null>)[k]) ?? 0), 0);
   const total = c.total_fair_value ?? result.total_fair_value ?? 0;
   const ok = Math.abs(sum - total) <= 0.01;
+  const repro = (result.reproducibility ?? {}) as Record<string, unknown>;
+
   return (
     <div className="space-y-4">
       <Card>
@@ -47,7 +49,7 @@ export function ResultView({ result }: { result: PricingResult }) {
               <th className="py-2 font-medium">항목</th><th className="text-right font-medium">값</th></tr></thead>
             <tbody>
               {SUM_KEYS.map((k) => {
-                const v = (c as any)[k] as number | null;
+                const v = (c as unknown as Record<string, number | null>)[k];
                 if (v == null) return null;
                 return (
                   <tr key={k} className="border-b border-slate-100">
@@ -70,6 +72,27 @@ export function ResultView({ result }: { result: PricingResult }) {
               {result.warnings.map((w, i) => <div key={i}>⚠ {w.message}</div>)}
             </div>
           )}
+          {result.errors?.length > 0 && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-danger">
+              {result.errors.map((w, i) => <div key={i}>✗ {w.message}</div>)}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="재현성 정보" desc="동일 입력 → 동일 결과. 감사 추적성." />
+        <CardBody>
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            {(["input_hash", "seed", "model_version", "computed_at"]).map((key) => (
+              <div key={key} className="min-w-0">
+                <dt className="text-xs text-slate-500">{key}</dt>
+                <dd className="truncate font-mono text-xs text-slate-800" title={repro[key] == null ? "" : String(repro[key])}>
+                  {repro[key] == null ? "—" : String(repro[key])}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </CardBody>
       </Card>
     </div>

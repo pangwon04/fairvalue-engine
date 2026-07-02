@@ -1,6 +1,9 @@
 package com.fairvalue.web
 
+import com.fairvalue.domain.InstrumentType
+import com.fairvalue.domain.JobStatus
 import com.fairvalue.dto.JobDto
+import com.fairvalue.dto.JobListResponse
 import com.fairvalue.dto.PriceJobResponse
 import com.fairvalue.dto.PricingTrigger
 import com.fairvalue.security.AuthPrincipal
@@ -12,8 +15,10 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 
 /**
  * openapi: POST /instruments/{id}/price(trigger), GET /jobs/{job_id}, GET /jobs/{job_id}/result.
@@ -29,6 +34,16 @@ class PricingController(private val jobService: JobService) {
         @PathVariable id: Long,
         @RequestBody(required = false) trigger: PricingTrigger?,
     ): PriceJobResponse = jobService.price(caller, id, trigger ?: PricingTrigger())
+
+    // Phase 5-5: 평가 이력 목록(org 격리, 최신순, 필터 instrument_type/status/from/to).
+    @GetMapping("/jobs")
+    fun listJobs(
+        @AuthenticationPrincipal caller: AuthPrincipal,
+        @RequestParam(name = "instrument_type", required = false) type: InstrumentType?,
+        @RequestParam(required = false) status: JobStatus?,
+        @RequestParam(required = false) from: LocalDate?,
+        @RequestParam(required = false) to: LocalDate?,
+    ): JobListResponse = JobListResponse(items = jobService.listJobs(caller, type, status, from, to))
 
     @GetMapping("/jobs/{jobId}")
     fun getJob(

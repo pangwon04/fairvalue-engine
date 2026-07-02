@@ -46,3 +46,10 @@ data class InstrumentDto(
 data class InstrumentListResponse(
     val items: List<InstrumentDto>,
 )
+
+/** Phase 5-5: DELETE /instruments/{id} 응답. deleted="soft"(ARCHIVED 보관) | "hard"(완전삭제). */
+data class DeleteInstrumentResponse(
+    val deleted: String,
+    @JsonProperty("instrument_id") val instrumentId: Long,
+    val status: com.fairvalue.domain.InstrumentStatus? = null,
+)

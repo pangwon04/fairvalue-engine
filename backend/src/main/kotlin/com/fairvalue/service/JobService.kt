@@ -1,16 +1,19 @@
 package com.fairvalue.service
 
 import com.fairvalue.domain.InstrumentStatus
+import com.fairvalue.domain.InstrumentType
 import com.fairvalue.domain.JobStatus
 import com.fairvalue.domain.PricingJobEntity
 import com.fairvalue.dto.Issue
 import com.fairvalue.dto.JobDto
+import com.fairvalue.dto.JobSummaryDto
 import com.fairvalue.dto.PriceJobResponse
 import com.fairvalue.dto.PricingTrigger
 import com.fairvalue.error.ConflictException
 import com.fairvalue.error.NotFoundException
 import com.fairvalue.pricing.ContextResolver
 import com.fairvalue.pricing.PricingEngineClient
+import com.fairvalue.repository.InstrumentRepository
 import com.fairvalue.repository.InstrumentTermsRepository
 import com.fairvalue.repository.PricingJobRepository
 import com.fairvalue.security.AuthPrincipal
@@ -18,6 +21,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 import java.time.OffsetDateTime
 
 /**
@@ -33,6 +37,7 @@ class JobService(
     private val instrumentService: InstrumentService,
     private val termsRepo: InstrumentTermsRepository,
     private val jobRepo: PricingJobRepository,
+    private val instrumentRepo: InstrumentRepository,
     private val resolver: ContextResolver,
     private val engine: PricingEngineClient,
     private val mapper: ObjectMapper,
@@ -79,6 +84,44 @@ class JobService(
             )
             jobRepo.save(job)
             PriceJobResponse(job.id!!, JobStatus.FAILED, cached = false)
+        }
+    }
+
+    // Phase 5-5: 평가 이력 목록. Job(최신순) + instrument 조인 + DONE resultJson 파싱.
+    @Transactional(readOnly = true)
+    fun listJobs(
+        caller: AuthPrincipal,
+        type: InstrumentType?,
+        status: JobStatus?,
+        from: LocalDate?,
+        to: LocalDate?,
+    ): List<JobSummaryDto> {
+        val instMap = instrumentRepo.findByOrgId(caller.orgId).associateBy { it.id }
+        return jobRepo.findByOrgIdOrderByIdDesc(caller.orgId).mapNotNull { j ->
+            val inst = instMap[j.instrumentId]
+            if (type != null && inst?.type != type) return@mapNotNull null
+            if (status != null && j.status != status) return@mapNotNull null
+            val createdDate = j.createdAt?.toLocalDate()
+            if (from != null && createdDate != null && createdDate.isBefore(from)) return@mapNotNull null
+            if (to != null && createdDate != null && createdDate.isAfter(to)) return@mapNotNull null
+
+            var total: Double? = null
+            var valDate: String? = null
+            var model: String? = null
+            if (j.status == JobStatus.DONE && !j.resultJson.isNullOrBlank()) {
+                runCatching {
+                    val node = mapper.readTree(j.resultJson)
+                    node.get("total_fair_value")?.takeIf { it.isNumber }?.let { total = it.asDouble() }
+                    node.get("valuation_date")?.takeIf { it.isTextual }?.let { valDate = it.asText() }
+                    node.path("key_parameters").get("model_name")?.takeIf { it.isTextual }?.let { model = it.asText() }
+                }
+            }
+            JobSummaryDto(
+                jobId = j.id!!, instrumentId = j.instrumentId,
+                instrumentName = inst?.name, instrumentType = inst?.type?.name,
+                valuationDate = valDate, model = model, status = j.status,
+                totalFairValue = total, createdAt = j.createdAt?.toString(),
+            )
         }
     }
 

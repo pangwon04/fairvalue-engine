@@ -106,3 +106,20 @@ data class Issue(
     val field: String? = null,
     val stage: String? = null,
 )
+
+// =========================================================================
+// Phase 5-5: 평가 이력 목록 요약(GET /jobs). Job + instrument 조인 + resultJson 파싱.
+// =========================================================================
+data class JobSummaryDto(
+    @JsonProperty("job_id") val jobId: Long,
+    @JsonProperty("instrument_id") val instrumentId: Long,
+    @JsonProperty("instrument_name") val instrumentName: String?,
+    @JsonProperty("instrument_type") val instrumentType: String?,
+    @JsonProperty("valuation_date") val valuationDate: String?,
+    val model: String?,
+    val status: JobStatus,
+    @JsonProperty("total_fair_value") val totalFairValue: Double?,
+    @JsonProperty("created_at") val createdAt: String?,
+)
+
+data class JobListResponse(val items: List<JobSummaryDto>)

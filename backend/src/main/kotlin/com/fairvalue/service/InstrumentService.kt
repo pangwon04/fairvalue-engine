@@ -4,10 +4,14 @@ import com.fairvalue.domain.InstrumentEntity
 import com.fairvalue.domain.InstrumentStatus
 import com.fairvalue.domain.InstrumentType
 import com.fairvalue.dto.CreateInstrumentRequest
+import com.fairvalue.dto.DeleteInstrumentResponse
 import com.fairvalue.dto.InstrumentDto
+import com.fairvalue.domain.JobStatus
 import com.fairvalue.error.NotFoundException
 import com.fairvalue.error.ValidationException
 import com.fairvalue.repository.InstrumentRepository
+import com.fairvalue.repository.InstrumentTermsRepository
+import com.fairvalue.repository.PricingJobRepository
 import com.fairvalue.repository.ProjectRepository
 import com.fairvalue.security.AuthPrincipal
 import org.springframework.stereotype.Service
@@ -17,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional
 class InstrumentService(
     private val instrumentRepo: InstrumentRepository,
     private val projectRepo: ProjectRepository,
+    private val pricingJobRepo: PricingJobRepository,
+    private val termsRepo: InstrumentTermsRepository,
 ) {
 
     @Transactional
@@ -43,14 +49,52 @@ class InstrumentService(
     }
 
     @Transactional(readOnly = true)
-    fun list(caller: AuthPrincipal, type: InstrumentType?, status: InstrumentStatus?): List<InstrumentDto> {
+    fun list(
+        caller: AuthPrincipal,
+        type: InstrumentType?,
+        status: InstrumentStatus?,
+        includeArchived: Boolean = false,
+    ): List<InstrumentDto> {
         val items = when {
             type != null && status != null -> instrumentRepo.findByOrgIdAndTypeAndStatus(caller.orgId, type, status)
             type != null -> instrumentRepo.findByOrgIdAndType(caller.orgId, type)
             status != null -> instrumentRepo.findByOrgIdAndStatus(caller.orgId, status)
             else -> instrumentRepo.findByOrgId(caller.orgId)
         }
-        return items.map { InstrumentDto.from(it) }
+        // ★ 기본은 ARCHIVED 제외(활성 상품만). status 명시 또는 include_archived=true 면 포함.
+        val visible = if (status != null || includeArchived) items
+        else items.filter { it.status != InstrumentStatus.ARCHIVED }
+        return visible.map { InstrumentDto.from(it) }
+    }
+
+    // ★ Phase 5-5: soft(ARCHIVED 보관) / hard(완전삭제) 분기 삭제.
+    //   결과 있는 Job(DONE) 존재 또는 status=PRICED → soft(데이터·이력 보존, 감사 추적성).
+    //   그 외 → hard(FK 순서 terms→jobs→instrument).
+    @Transactional
+    fun delete(caller: AuthPrincipal, id: Long): DeleteInstrumentResponse {
+        WriteAccess.require(caller)                                  // VALUATOR 이상(403)
+        val inst = instrumentRepo.findByIdAndOrgId(id, caller.orgId) // 타 조직/없음 404
+            ?: throw NotFoundException("상품을 찾을 수 없습니다.")
+
+        if (inst.status == InstrumentStatus.ARCHIVED) {
+            return DeleteInstrumentResponse("soft", id, InstrumentStatus.ARCHIVED)   // 멱등(이미 보관)
+        }
+
+        val hasResult = inst.status == InstrumentStatus.PRICED ||
+            pricingJobRepo.existsByOrgIdAndInstrumentIdAndStatus(caller.orgId, id, JobStatus.DONE)
+
+        return if (hasResult) {
+            inst.status = InstrumentStatus.ARCHIVED
+            instrumentRepo.save(inst)
+            DeleteInstrumentResponse("soft", id, InstrumentStatus.ARCHIVED)
+        } else {
+            // hard: 참조 무결성 위해 terms → jobs → instrument 순서로 삭제.
+            termsRepo.findByInstrumentIdAndOrgId(id, caller.orgId)?.let { termsRepo.delete(it) }
+            val jobs = pricingJobRepo.findByOrgIdAndInstrumentId(caller.orgId, id)
+            if (jobs.isNotEmpty()) pricingJobRepo.deleteAll(jobs)
+            instrumentRepo.delete(inst)
+            DeleteInstrumentResponse("hard", id, null)
+        }
     }
 
     @Transactional(readOnly = true)

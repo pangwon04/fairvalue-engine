@@ -13,4 +13,9 @@ interface PricingJobRepository : JpaRepository<PricingJobEntity, Long> {
     fun findFirstByOrgIdAndInstrumentIdAndInputHashAndStatusOrderByIdAsc(
         orgId: Long, instrumentId: Long, inputHash: String, status: JobStatus,
     ): PricingJobEntity?
+
+    // Phase 5-5: 평가 이력 목록(최신순) / soft-hard 판정 / hard delete 정리.
+    fun findByOrgIdOrderByIdDesc(orgId: Long): List<PricingJobEntity>
+    fun existsByOrgIdAndInstrumentIdAndStatus(orgId: Long, instrumentId: Long, status: JobStatus): Boolean
+    fun findByOrgIdAndInstrumentId(orgId: Long, instrumentId: Long): List<PricingJobEntity>
 }

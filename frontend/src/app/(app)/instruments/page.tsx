@@ -1,30 +1,46 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listInstruments } from "@/lib/api/instruments";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
+import { Toggle } from "@/components/ui/Toggle";
+import { DeleteInstrumentButton } from "@/components/DeleteInstrumentButton";
 
 const statusTone: Record<string, "gray" | "navy" | "success"> = {
   DRAFT: "gray", TERMS_SAVED: "navy", PRICED: "success", ARCHIVED: "gray",
 };
 
 export default function InstrumentsPage() {
-  const { data, isLoading, isError, error } = useQuery({ queryKey: ["instruments"], queryFn: () => listInstruments() });
+  const qc = useQueryClient();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["instruments", showArchived],
+    queryFn: () => listInstruments(undefined, showArchived),
+  });
+  const [msg, setMsg] = useState("");
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900">평가 상품</h1>
-        <Link href="/instruments/new"><Button>+ CB 상품 생성</Button></Link>
+        <Link href="/instruments/new"><Button>+ 상품 생성</Button></Link>
       </div>
       <Card>
-        <CardHeader title="상품 목록" desc="조직 내 평가 대상 복합금융상품" />
-        <CardBody>
+        <CardHeader title="상품 목록" desc="조직 내 평가 대상 복합금융상품"
+          right={
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              보관 상품 보기 <Toggle checked={showArchived} onChange={setShowArchived} />
+            </label>
+          } />
+        <CardBody className="space-y-2">
+          {msg && <p className="text-sm text-success">{msg}</p>}
           {isLoading && <Spinner label="불러오는 중…" />}
           {isError && <p className="text-sm text-danger">목록 로드 실패: {(error as Error).message}</p>}
-          {data && data.items.length === 0 && <p className="text-sm text-slate-500">아직 상품이 없습니다. 위에서 CB 상품을 생성하세요.</p>}
+          {data && data.items.length === 0 && <p className="text-sm text-slate-500">상품이 없습니다. 위에서 생성하세요.</p>}
           {data && data.items.length > 0 && (
             <table className="w-full text-sm">
               <thead>
@@ -42,7 +58,19 @@ export default function InstrumentsPage() {
                     <td className="text-slate-800">{i.name}</td>
                     <td className="text-slate-600">{i.issuer}</td>
                     <td><Badge tone={statusTone[i.status] ?? "gray"}>{i.status}</Badge></td>
-                    <td className="text-right"><Link href={`/instruments/${i.id}`} className="text-navy-700 hover:underline">열기 →</Link></td>
+                    <td className="text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <Link href={`/instruments/${i.id}`} className="text-navy-700 hover:underline">열기 →</Link>
+                        {i.status !== "ARCHIVED" && (
+                          <DeleteInstrumentButton
+                            instrumentId={i.id} status={i.status} name={i.name}
+                            onDeleted={(d) => {
+                              setMsg(d === "soft" ? "보관 처리되었습니다(데이터 보존)." : "완전 삭제되었습니다.");
+                              qc.invalidateQueries({ queryKey: ["instruments"] });
+                            }} />
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

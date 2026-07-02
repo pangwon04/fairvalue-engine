@@ -3,6 +3,7 @@ package com.fairvalue.web
 import com.fairvalue.domain.InstrumentStatus
 import com.fairvalue.domain.InstrumentType
 import com.fairvalue.dto.CreateInstrumentRequest
+import com.fairvalue.dto.DeleteInstrumentResponse
 import com.fairvalue.dto.InstrumentDto
 import com.fairvalue.dto.InstrumentListResponse
 import com.fairvalue.security.AuthPrincipal
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
@@ -34,12 +36,20 @@ class InstrumentController(private val instrumentService: InstrumentService) {
         @AuthenticationPrincipal caller: AuthPrincipal,
         @RequestParam(required = false) type: InstrumentType?,
         @RequestParam(required = false) status: InstrumentStatus?,
+        @RequestParam(name = "include_archived", required = false) includeArchived: Boolean?,
     ): InstrumentListResponse =
-        InstrumentListResponse(items = instrumentService.list(caller, type, status))
+        InstrumentListResponse(items = instrumentService.list(caller, type, status, includeArchived ?: false))
 
     @GetMapping("/instruments/{id}")
     fun get(
         @AuthenticationPrincipal caller: AuthPrincipal,
         @PathVariable id: Long,
     ): InstrumentDto = instrumentService.get(caller, id)
+
+    // Phase 5-5: 삭제(결과 있으면 soft/ARCHIVED, 없으면 hard). org 격리 + WriteAccess(서비스).
+    @DeleteMapping("/instruments/{id}")
+    fun delete(
+        @AuthenticationPrincipal caller: AuthPrincipal,
+        @PathVariable id: Long,
+    ): DeleteInstrumentResponse = instrumentService.delete(caller, id)
 }

@@ -1,12 +1,13 @@
 "use client";
 import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { getInstrument } from "@/lib/api/instruments";
 import { saveTerms } from "@/lib/api/terms";
 import { priceInstrument, getJob, getResult } from "@/lib/api/pricing";
 import { ApiError } from "@/lib/apiClient";
 import { isActiveProduct } from "@/lib/products";
+import { DeleteInstrumentButton } from "@/components/DeleteInstrumentButton";
 import type { ProductSchema, FormValues } from "@/forms/types";
 import type { PricingResult, ValidationIssue } from "@/lib/types";
 import { FormRenderer } from "@/forms/FormRenderer";
@@ -30,6 +31,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export default function InstrumentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const instId = Number(id);
+  const router = useRouter();
   const { data: inst, isLoading } = useQuery({ queryKey: ["instrument", instId], queryFn: () => getInstrument(instId) });
 
   const [saving, setSaving] = useState(false);
@@ -89,7 +91,11 @@ export default function InstrumentDetailPage() {
           <h1 className="text-xl font-semibold text-slate-900">{inst.name}</h1>
           <p className="text-sm text-slate-500">{inst.issuer} · <Badge tone="navy">{inst.type}</Badge></p>
         </div>
-        {msg && <span className="text-sm text-slate-600">{msg}</span>}
+        <div className="flex items-center gap-3">
+          {msg && <span className="text-sm text-slate-600">{msg}</span>}
+          <DeleteInstrumentButton instrumentId={instId} status={inst.status} name={inst.name}
+            onDeleted={() => router.replace("/instruments")} />
+        </div>
       </div>
 
       {active && schema ? (
