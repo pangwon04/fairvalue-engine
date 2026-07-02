@@ -1,8 +1,36 @@
 "use client";
-import { ComingSoon } from "@/components/ComingSoon";
+import { useState } from "react";
+import { Tabs } from "@/components/ui/Tabs";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DirectUploadTab } from "@/components/curves/DirectUploadTab";
+import { KofiaParseTab } from "@/components/curves/KofiaParseTab";
+import { AutoFetchTab } from "@/components/curves/AutoFetchTab";
+import { CurveList } from "@/components/curves/CurveList";
+
+const TABS = [
+  { id: "direct", label: "직접 업로드" },
+  { id: "kofia", label: "KOFIA 엑셀 파싱" },
+  { id: "auto", label: "자동 조회" },
+];
+
 export default function CurvesPage() {
-  return <ComingSoon
-    title="수익률 커브"
-    purpose="무위험·신용등급 수익률 커브를 CSV로 업로드하고 기준일·등급·버전별로 관리하며, 부트스트래핑으로 평가에 쓸 zero 커브를 산출합니다."
-    features={["커브 CSV 업로드(무위험/신용, as_of·grade)", "부트스트래핑·보간 결과 조회", "버전 이력과 평가 시 스냅샷 연결"]} />;
+  const [tab, setTab] = useState("direct");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = () => setRefreshKey((k) => k + 1);
+
+  return (
+    <div className="max-w-4xl space-y-4">
+      <h1 className="text-xl font-semibold text-slate-900">수익률 커브</h1>
+      <Card>
+        <CardHeader title="커브 등록" desc="무위험(RISK_FREE)·신용(CREDIT) 커브를 등록합니다. 3가지 방식 중 선택하세요." />
+        <CardBody className="space-y-4">
+          <Tabs tabs={TABS} active={tab} onChange={setTab} />
+          {tab === "direct" && <DirectUploadTab onSaved={refresh} />}
+          {tab === "kofia" && <KofiaParseTab onSaved={refresh} />}
+          {tab === "auto" && <AutoFetchTab />}
+        </CardBody>
+      </Card>
+      <CurveList refreshKey={refreshKey} />
+    </div>
+  );
 }

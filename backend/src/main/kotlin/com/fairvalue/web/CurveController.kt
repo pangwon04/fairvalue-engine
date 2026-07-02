@@ -7,9 +7,11 @@ import com.fairvalue.dto.CurveListResponse
 import com.fairvalue.dto.CurveUploadCommand
 import com.fairvalue.dto.CurveUploadJsonRequest
 import com.fairvalue.dto.CurveUploadResult
+import com.fairvalue.dto.KofiaParseResponse
 import com.fairvalue.dto.PermissionRequestResponse
 import com.fairvalue.security.AuthPrincipal
 import com.fairvalue.service.CurveService
+import com.fairvalue.service.KofiaExcelParser
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -32,7 +34,10 @@ import java.time.LocalDate
  * 업로드 권한은 서비스에서 강제(CURVE_MANAGER/ORG_ADMIN), 조회는 인증 전원. org_id 격리.
  */
 @RestController
-class CurveController(private val curveService: CurveService) {
+class CurveController(
+    private val curveService: CurveService,
+    private val kofiaParser: KofiaExcelParser,
+) {
 
     // --- 업로드: JSON 본문 ---
     @PostMapping("/curves", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -96,4 +101,12 @@ class CurveController(private val curveService: CurveService) {
     ): PermissionRequestResponse =
         // 골격: 승인 큐는 후속. 추적용 request_id 만 반환(미영속).
         PermissionRequestResponse(requestId = System.nanoTime())
+
+    // --- KOFIA/평가사 엑셀 파싱(미리보기, 저장 안 함). 저장은 POST /curves. ---
+    @PostMapping("/curves/parse-kofia", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun parseKofia(
+        @AuthenticationPrincipal caller: AuthPrincipal,
+        @RequestParam("file") file: MultipartFile,
+    ): KofiaParseResponse =
+        kofiaParser.parse(file.bytes, file.originalFilename ?: "kofia.xls")
 }

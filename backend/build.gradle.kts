@@ -44,6 +44,10 @@ dependencies {
     // --- OpenAPI (의존성만; openapi.yaml 노출/대조는 다음 단계) ---
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
 
+    // ★ Phase 5-4: KOFIA 채권시가평가수익률 엑셀 파싱(.xls HSSF / .xlsx XSSF, WorkbookFactory)
+    implementation("org.apache.poi:poi:5.2.5")
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
+
     // --- 테스트 (기존 InputHashTest 유지) ---
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
