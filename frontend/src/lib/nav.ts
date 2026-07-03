@@ -18,7 +18,7 @@ export const NAV: NavItem[] = [
     ],
   },
   { label: "평가 이력", href: "/jobs", active: true },
-  { label: "보고서", href: "/reports", active: false },
+  { label: "보고서", href: "/reports", active: true },
   // ★5-7: 계산 근거는 평가 이력 상세에 종속(독립 메뉴 폐지). /audit → /jobs 리다이렉트.
   { label: "조직 관리", href: "/admin", active: false, adminOnly: true },
 ];

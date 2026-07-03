@@ -48,6 +48,9 @@ dependencies {
     implementation("org.apache.poi:poi:5.2.5")
     implementation("org.apache.poi:poi-ooxml:5.2.5")
 
+    // ★ Phase 5-8: 평가보고서 PDF(OpenPDF — LGPL/MPL, iText AGPL 회피). CJK(한글) 지원 내장 CMap.
+    implementation("com.github.librepdf:openpdf:1.3.34")
+
     // --- 테스트 (기존 InputHashTest 유지) ---
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
