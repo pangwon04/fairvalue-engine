@@ -2,6 +2,8 @@ package com.fairvalue.web
 
 import com.fairvalue.domain.InstrumentType
 import com.fairvalue.domain.JobStatus
+import com.fairvalue.dto.BatchDeleteRequest
+import com.fairvalue.dto.BatchDeleteResult
 import com.fairvalue.dto.JobContextDto
 import com.fairvalue.dto.JobDto
 import com.fairvalue.dto.JobListResponse
@@ -36,7 +38,7 @@ class PricingController(private val jobService: JobService) {
         @RequestBody(required = false) trigger: PricingTrigger?,
     ): PriceJobResponse = jobService.price(caller, id, trigger ?: PricingTrigger())
 
-    // Phase 5-5: 평가 이력 목록(org 격리, 최신순, 필터 instrument_type/status/from/to).
+    // Phase 5-5/5-8: 평가 이력 목록(org 격리, 최신순, 필터). include_hidden 기본 false(숨김 제외).
     @GetMapping("/jobs")
     fun listJobs(
         @AuthenticationPrincipal caller: AuthPrincipal,
@@ -44,7 +46,15 @@ class PricingController(private val jobService: JobService) {
         @RequestParam(required = false) status: JobStatus?,
         @RequestParam(required = false) from: LocalDate?,
         @RequestParam(required = false) to: LocalDate?,
-    ): JobListResponse = JobListResponse(items = jobService.listJobs(caller, type, status, from, to))
+        @RequestParam(name = "include_hidden", required = false, defaultValue = "false") includeHidden: Boolean,
+    ): JobListResponse = JobListResponse(items = jobService.listJobs(caller, type, status, from, to, includeHidden))
+
+    // ★5-8: 이력 배치 삭제(DONE→숨김, FAILED→행 삭제, 진행중→skip). org 격리.
+    @PostMapping("/jobs/batch-delete")
+    fun batchDelete(
+        @AuthenticationPrincipal caller: AuthPrincipal,
+        @RequestBody req: BatchDeleteRequest,
+    ): BatchDeleteResult = jobService.batchDelete(caller, req)
 
     @GetMapping("/jobs/{jobId}")
     fun getJob(

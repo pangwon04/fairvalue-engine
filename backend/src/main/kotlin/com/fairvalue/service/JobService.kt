@@ -4,12 +4,15 @@ import com.fairvalue.domain.InstrumentStatus
 import com.fairvalue.domain.InstrumentType
 import com.fairvalue.domain.JobStatus
 import com.fairvalue.domain.PricingJobEntity
+import com.fairvalue.dto.BatchDeleteRequest
+import com.fairvalue.dto.BatchDeleteResult
 import com.fairvalue.dto.Issue
 import com.fairvalue.dto.JobContextDto
 import com.fairvalue.dto.JobDto
 import com.fairvalue.dto.JobSummaryDto
 import com.fairvalue.dto.PriceJobResponse
 import com.fairvalue.dto.PricingTrigger
+import com.fairvalue.dto.SkippedJob
 import com.fairvalue.error.ConflictException
 import com.fairvalue.error.NotFoundException
 import com.fairvalue.pricing.ContextResolver
@@ -91,6 +94,7 @@ class JobService(
     }
 
     // Phase 5-5: 평가 이력 목록. Job(최신순) + instrument 조인 + DONE resultJson 파싱.
+    //   ★5-8: includeHidden=false 면 숨긴(hidden_at != null) job 제외(기본).
     @Transactional(readOnly = true)
     fun listJobs(
         caller: AuthPrincipal,
@@ -98,9 +102,11 @@ class JobService(
         status: JobStatus?,
         from: LocalDate?,
         to: LocalDate?,
+        includeHidden: Boolean = false,
     ): List<JobSummaryDto> {
         val instMap = instrumentRepo.findByOrgId(caller.orgId).associateBy { it.id }
         return jobRepo.findByOrgIdOrderByIdDesc(caller.orgId).mapNotNull { j ->
+            if (!includeHidden && j.hiddenAt != null) return@mapNotNull null
             val inst = instMap[j.instrumentId]
             if (type != null && inst?.type != type) return@mapNotNull null
             if (status != null && j.status != status) return@mapNotNull null
@@ -124,6 +130,7 @@ class JobService(
                 instrumentName = inst?.name, instrumentType = inst?.type?.name,
                 valuationDate = valDate, model = model, status = j.status,
                 totalFairValue = total, createdAt = j.createdAt?.toString(),
+                hidden = j.hiddenAt != null,
             )
         }
     }
@@ -151,5 +158,42 @@ class JobService(
             ?: throw NotFoundException("Job 을 찾을 수 없습니다.")
         val ctx = job.contextJson?.let { runCatching { mapper.readTree(it) }.getOrNull() }
         return JobContextDto(jobId = job.id!!, hasContext = ctx != null, context = ctx)
+    }
+
+    /**
+     * ★5-8: 이력 배치 삭제. 상태별 분기 — DONE/PARTIAL→숨김(soft, 데이터 보존),
+     *   FAILED→행 삭제(hard), QUEUED/RUNNING→skip(진행 중). org 격리.
+     *   all=true 면 현재 필터 + 숨김 제외 범위(사용자가 보는 목록). 아니면 job_ids.
+     */
+    @Transactional
+    fun batchDelete(caller: AuthPrincipal, req: BatchDeleteRequest): BatchDeleteResult {
+        WriteAccess.require(caller)
+        val instMap = instrumentRepo.findByOrgId(caller.orgId).associateBy { it.id }
+        val targets: List<PricingJobEntity> = if (req.all == true) {
+            jobRepo.findByOrgIdOrderByIdDesc(caller.orgId).filter { j ->
+                j.hiddenAt == null &&
+                    (req.instrumentType == null || instMap[j.instrumentId]?.type == req.instrumentType) &&
+                    (req.status == null || j.status == req.status)
+            }
+        } else {
+            (req.jobIds ?: emptyList()).mapNotNull { jobRepo.findByIdAndOrgId(it, caller.orgId) }
+        }
+        var hidden = 0
+        var deleted = 0
+        val skipped = mutableListOf<SkippedJob>()
+        for (j in targets) {
+            when (j.status) {
+                JobStatus.DONE, JobStatus.PARTIAL -> {
+                    if (j.hiddenAt == null) {
+                        j.hiddenAt = OffsetDateTime.now(); jobRepo.save(j); hidden++
+                    } else {
+                        skipped += SkippedJob(j.id!!, "이미 숨김")
+                    }
+                }
+                JobStatus.FAILED -> { jobRepo.delete(j); deleted++ }
+                JobStatus.QUEUED, JobStatus.RUNNING -> skipped += SkippedJob(j.id!!, "진행 중(삭제 불가)")
+            }
+        }
+        return BatchDeleteResult(hiddenCount = hidden, deletedCount = deleted, skipped = skipped)
     }
 }

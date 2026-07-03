@@ -62,6 +62,10 @@ class PricingJobEntity(
     @Column(name = "completed_at")
     var completedAt: OffsetDateTime? = null,
 
+    // ★5-8(V7): 숨김(soft). null=노출, 값=숨긴 시각. 상품 삭제 불변식 쿼리는 이 컬럼 미참조.
+    @Column(name = "hidden_at")
+    var hiddenAt: OffsetDateTime? = null,
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")

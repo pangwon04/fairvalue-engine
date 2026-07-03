@@ -127,6 +127,28 @@ data class JobSummaryDto(
     val status: JobStatus,
     @JsonProperty("total_fair_value") val totalFairValue: Double?,
     @JsonProperty("created_at") val createdAt: String?,
+    val hidden: Boolean = false,   // ★5-8: 숨김 여부(include_hidden 조회 시 뱃지)
 )
 
 data class JobListResponse(val items: List<JobSummaryDto>)
+
+// =========================================================================
+// Phase 5-8: 이력 배치 삭제(DONE→숨김, FAILED→행 삭제, 진행중→skip).
+// =========================================================================
+data class BatchDeleteRequest(
+    @JsonProperty("job_ids") val jobIds: List<Long>? = null,
+    val all: Boolean? = null,
+    @JsonProperty("instrument_type") val instrumentType: com.fairvalue.domain.InstrumentType? = null,
+    val status: JobStatus? = null,
+)
+
+data class SkippedJob(
+    @JsonProperty("job_id") val jobId: Long,
+    val reason: String,
+)
+
+data class BatchDeleteResult(
+    @JsonProperty("hidden_count") val hiddenCount: Int,
+    @JsonProperty("deleted_count") val deletedCount: Int,
+    val skipped: List<SkippedJob>,
+)

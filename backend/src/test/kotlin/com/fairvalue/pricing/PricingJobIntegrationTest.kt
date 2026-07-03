@@ -69,6 +69,8 @@ class PricingJobIntegrationTest {
         client.send(b(path, token).GET().build(), HttpResponse.BodyHandlers.ofString())
     private fun patch(path: String, payload: Any, token: String?) =
         client.send(b(path, token).method("PATCH", body(payload)).build(), HttpResponse.BodyHandlers.ofString())
+    private fun del(path: String, token: String?) =
+        client.send(b(path, token).DELETE().build(), HttpResponse.BodyHandlers.ofString())
 
     private fun uniq(p: String) = "$p-${System.nanoTime()}"
     private fun adminToken(org: String = uniq("ORG")): String {
@@ -211,6 +213,59 @@ class PricingJobIntegrationTest {
         // ★타 조직: 404
         val tokenB = adminToken(uniq("ORGB"))
         assertEquals(404, get("/jobs/$jobA/context", tokenB).statusCode())
+    }
+
+    @Test
+    fun `5-8 DONE 숨김 — 목록 제외·include_hidden 조회·데이터 보존`() {
+        val token = adminToken(uniq("ORG"))
+        val inst = cbWithTerms(token)
+        val jobId = mapper.readTree(post("/instruments/$inst/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
+
+        // 배치 숨김(DONE → soft)
+        val res = post("/jobs/batch-delete", mapOf("job_ids" to listOf(jobId)), token)
+        assertEquals(200, res.statusCode(), res.body())
+        val r = mapper.readTree(res.body())
+        assertEquals(1, r.get("hidden_count").asInt())
+        assertEquals(0, r.get("deleted_count").asInt())
+
+        // 기본 목록 제외
+        val listDefault = mapper.readTree(get("/jobs", token).body()).get("items")
+        assertTrue((0 until listDefault.size()).none { listDefault.get(it).get("job_id").asLong() == jobId }, "숨긴 job 은 기본 목록 제외")
+        // include_hidden 조회
+        val listHidden = mapper.readTree(get("/jobs?include_hidden=true", token).body()).get("items")
+        val found = (0 until listHidden.size()).map { listHidden.get(it) }.first { it.get("job_id").asLong() == jobId }
+        assertTrue(found.get("hidden").asBoolean(), "include_hidden 에 hidden=true")
+        // ★데이터 보존: 결과·컨텍스트 여전히 조회 가능
+        assertEquals(200, get("/jobs/$jobId/result", token).statusCode())
+    }
+
+    @Test
+    fun `5-8 ★감사 불변식 — DONE job 전부 숨겨도 상품 삭제는 soft`() {
+        val token = adminToken(uniq("ORG"))
+        val inst = cbWithTerms(token)
+        val jobId = mapper.readTree(post("/instruments/$inst/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
+
+        // DONE job 을 숨김
+        assertEquals(200, post("/jobs/batch-delete", mapOf("job_ids" to listOf(jobId)), token).statusCode())
+
+        // 상품 삭제 → 여전히 soft(ARCHIVED). 숨김이 감사자료 파기 우회로가 되면 안 됨.
+        val delRes = del("/instruments/$inst", token)
+        assertEquals(200, delRes.statusCode(), delRes.body())
+        assertEquals("soft", mapper.readTree(delRes.body()).get("deleted").asText(), "DONE 숨겨도 상품 삭제는 soft")
+    }
+
+    @Test
+    fun `5-8 배치 삭제 — 진행중 skip·org 격리`() {
+        val token = adminToken(uniq("ORG"))
+        val inst = cbWithTerms(token)
+        val jobId = mapper.readTree(post("/instruments/$inst/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
+
+        // 타 조직은 해당 job 을 대상에서 못 봄(격리) — 삭제 카운트 0
+        val tokenB = adminToken(uniq("ORGB"))
+        val rB = mapper.readTree(post("/jobs/batch-delete", mapOf("job_ids" to listOf(jobId)), tokenB).body())
+        assertEquals(0, rB.get("hidden_count").asInt() + rB.get("deleted_count").asInt())
+        // 본인 조직에서 여전히 노출(숨김 안 됨)
+        assertEquals(200, get("/jobs/$jobId/result", token).statusCode())
     }
 
     @Test
