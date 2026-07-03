@@ -26,6 +26,13 @@ data class PriceJobResponse(
     val cached: Boolean,
 )
 
+/** ★5-7: GET /jobs/{id}/context — 평가시점 입력 스냅샷. 구 job 은 has_context=false·context=null. */
+data class JobContextDto(
+    @JsonProperty("job_id") val jobId: Long,
+    @JsonProperty("has_context") val hasContext: Boolean,
+    val context: JsonNode?,
+)
+
 /** GET /jobs/{job_id} 응답. */
 data class JobDto(
     @JsonProperty("job_id") val jobId: Long,

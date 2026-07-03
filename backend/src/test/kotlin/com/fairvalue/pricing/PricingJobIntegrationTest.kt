@@ -196,6 +196,24 @@ class PricingJobIntegrationTest {
     }
 
     @Test
+    fun `5-7 입력 스냅샷 — context 저장·조회 및 타 조직 404`() {
+        val tokenA = adminToken(uniq("ORGA"))
+        val instA = cbWithTerms(tokenA)
+        val jobA = mapper.readTree(post("/instruments/$instA/price", emptyMap<String, Any>(), tokenA).body()).get("job_id").asLong()
+
+        // 본인 조직: 평가시점 스냅샷 존재
+        val ctxRes = get("/jobs/$jobA/context", tokenA)
+        assertEquals(200, ctxRes.statusCode(), ctxRes.body())
+        val ctxNode = mapper.readTree(ctxRes.body())
+        assertTrue(ctxNode.get("has_context").asBoolean(), ctxRes.body())
+        assertTrue(ctxNode.get("context").has("instrument_type"), "resolve 스냅샷 필드 존재")
+
+        // ★타 조직: 404
+        val tokenB = adminToken(uniq("ORGB"))
+        assertEquals(404, get("/jobs/$jobA/context", tokenB).statusCode())
+    }
+
+    @Test
     fun `권한 — VIEWER는 price 실행 403`() {
         val org = uniq("ORG")
         val adminTok = adminToken(org)

@@ -2,6 +2,7 @@ package com.fairvalue.web
 
 import com.fairvalue.domain.InstrumentType
 import com.fairvalue.domain.JobStatus
+import com.fairvalue.dto.JobContextDto
 import com.fairvalue.dto.JobDto
 import com.fairvalue.dto.JobListResponse
 import com.fairvalue.dto.PriceJobResponse
@@ -56,4 +57,11 @@ class PricingController(private val jobService: JobService) {
         @AuthenticationPrincipal caller: AuthPrincipal,
         @PathVariable jobId: Long,
     ): JsonNode = jobService.getResult(caller, jobId)
+
+    // ★5-7: 평가시점 입력 스냅샷(계산근거 '입력 스냅샷'). org 격리 동일. 구 job 은 has_context=false.
+    @GetMapping("/jobs/{jobId}/context")
+    fun getContext(
+        @AuthenticationPrincipal caller: AuthPrincipal,
+        @PathVariable jobId: Long,
+    ): JobContextDto = jobService.getContext(caller, jobId)
 }

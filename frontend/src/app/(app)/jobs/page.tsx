@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listJobs, getResult } from "@/lib/api/pricing";
 import { ResultView } from "@/components/ResultView";
+import { CalculationBasis } from "@/components/audit/CalculationBasis";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
@@ -80,10 +81,15 @@ export default function JobsPage() {
       </Card>
 
       {openJob != null && (
-        <div>
+        <div className="space-y-4">
           {result.isLoading && <Spinner label="결과 불러오는 중…" />}
           {result.isError && <p className="text-sm text-danger">결과를 불러오지 못했습니다.</p>}
-          {result.data && <ResultView result={result.data} />}
+          {result.data && (
+            <>
+              <ResultView result={result.data} />
+              <CalculationBasis result={result.data} jobId={openJob} />
+            </>
+          )}
         </div>
       )}
     </div>

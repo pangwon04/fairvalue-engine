@@ -5,6 +5,10 @@ export const priceInstrument = (id: number, trigger: PricingTrigger) =>
 export const getJob = (jobId: number) => api.get<JobDto>(`/jobs/${jobId}`);
 export const getResult = (jobId: number) => api.get<PricingResult>(`/jobs/${jobId}/result`);
 
+// ★5-7: 평가시점 입력 스냅샷(contextJson). 구 job 은 null(폴백 안내). org 격리는 백엔드 동일.
+export interface JobContext { job_id: number; has_context: boolean; context: Record<string, unknown> | null; }
+export const getJobContext = (jobId: number) => api.get<JobContext>(`/jobs/${jobId}/context`);
+
 export interface JobSummary {
   job_id: number; instrument_id: number; instrument_name: string | null;
   instrument_type: string | null; valuation_date: string | null; model: string | null;

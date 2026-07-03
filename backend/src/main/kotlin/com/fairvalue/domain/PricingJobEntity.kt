@@ -54,6 +54,11 @@ class PricingJobEntity(
     @Column(name = "result_json", columnDefinition = "jsonb")
     var resultJson: String? = null,
 
+    // ★5-7(V6, additive): 평가시점 resolve 입력 스냅샷(감사 추적성). 구 job 은 null.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "context_json", columnDefinition = "jsonb")
+    var contextJson: String? = null,
+
     @Column(name = "completed_at")
     var completedAt: OffsetDateTime? = null,
 

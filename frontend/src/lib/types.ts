@@ -31,6 +31,25 @@ export interface Components {
   stock_option_value: number | null; conditional_option_value: number | null;
   dilution_effect: number | null; total_fair_value: number | null;
 }
+// ── E1~E3a 엔진 확장 데이터(계산근거). 프론트 전용 옵션 타입 — 계약 무관, 구버전 결과엔 없음(하위호환) ──
+export type TreeRow = (number | null)[];
+export interface TreeMeta {
+  steps_used: number; dt: number; u: number; d: number; display_nodes: number;
+  rate_mode?: string; model?: string;
+}
+export interface Trees {
+  underlying_tree: TreeRow[]; equity_tree: TreeRow[]; debt_tree: TreeRow[]; composite_tree: TreeRow[];
+  conversion_prob_tree?: TreeRow[];          // GS 전용
+  risk_neutral_prob: Array<{ step: number; p: number; q: number }>;
+  tree_meta: TreeMeta;
+}
+export interface SensitivityGrid {
+  vol_axis: number[]; spot_axis: number[]; total_grid: number[][]; per_unit_grid: number[][];
+  meta: { steps_used: number; model: string; vol_bump?: number; spot_bump?: number; vol_floor_applied: boolean };
+}
+export interface RateTable { ytm: [number, number][]; spot: [number, number][]; forward: [number, number][]; grid: number; assumption: string; }
+export interface CurveBootstrap { rf?: RateTable | null; rd?: RateTable | null; rate_mode: string; }
+
 export interface PricingResult {
   job_id: number; instrument_id: number; instrument_type: string;
   valuation_date: string | null; status: string;
@@ -40,6 +59,9 @@ export interface PricingResult {
   reproducibility: Record<string, unknown>;
   warnings: Array<{ code: string; message: string; stage?: string }>;
   errors: Array<{ code: string; message: string; stage?: string }>;
+  trees?: Trees | null;
+  sensitivity?: SensitivityGrid | null;
+  curve_bootstrap?: CurveBootstrap | null;
 }
 
 export interface CurveDto {

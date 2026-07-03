@@ -5,6 +5,7 @@ import com.fairvalue.domain.InstrumentType
 import com.fairvalue.domain.JobStatus
 import com.fairvalue.domain.PricingJobEntity
 import com.fairvalue.dto.Issue
+import com.fairvalue.dto.JobContextDto
 import com.fairvalue.dto.JobDto
 import com.fairvalue.dto.JobSummaryDto
 import com.fairvalue.dto.PriceJobResponse
@@ -67,6 +68,8 @@ class JobService(
             ),
         )
         job.status = JobStatus.RUNNING
+        // ★5-7(V6): 평가시점 입력 스냅샷 저장(DONE·FAILED 공통 — 감사 추적성).
+        job.contextJson = mapper.writeValueAsString(ctx.contextJson)
         job = jobRepo.save(job)
 
         return try {
@@ -139,5 +142,14 @@ class JobService(
         val json = job.resultJson
             ?: throw ConflictException("결과가 아직 없습니다(status=${job.status}).")
         return mapper.readTree(json)
+    }
+
+    // ★5-7: 평가시점 입력 스냅샷(contextJson). org 격리 동일(타 조직 404). 구 job 은 has_context=false.
+    @Transactional(readOnly = true)
+    fun getContext(caller: AuthPrincipal, jobId: Long): JobContextDto {
+        val job = jobRepo.findByIdAndOrgId(jobId, caller.orgId)
+            ?: throw NotFoundException("Job 을 찾을 수 없습니다.")
+        val ctx = job.contextJson?.let { runCatching { mapper.readTree(it) }.getOrNull() }
+        return JobContextDto(jobId = job.id!!, hasContext = ctx != null, context = ctx)
     }
 }

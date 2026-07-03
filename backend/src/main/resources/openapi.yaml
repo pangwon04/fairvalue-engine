@@ -522,6 +522,29 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /jobs/{job_id}/context:
+    get:
+      tags: [Pricing]
+      summary: 평가시점 입력 스냅샷(contextJson) — 5-7 계산근거 '입력 스냅샷'(additive)
+      description: '평가 실행 시 resolve 된 ValuationContext 스냅샷. 구 job 은 has_context=false·context=null. org 격리 동일.'
+      operationId: getJobContext
+      x-roles: [all]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      responses:
+        '200':
+          description: 입력 스냅샷
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, has_context]
+                properties:
+                  job_id: { type: integer }
+                  has_context: { type: boolean }
+                  context: { type: [object, 'null'] }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /jobs/{job_id}/audit-data:
     get:
       tags: [Pricing]
