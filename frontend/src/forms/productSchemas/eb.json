@@ -75,6 +75,7 @@
         { "key": "volatility", "label": "교환대상사 주가 변동성", "type": "percentage", "unit": "%", "required": true, "bind": "market.volatility",
           "help": "교환대상 회사(발행사 아님)의 주가 변동성.",
           "validations": [{ "rule": "volatilityPositive", "message": "변동성은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "volatility_ref", "label": "변동성 참조(자동)", "type": "hidden", "bind": "market.volatility_ref" },
         { "key": "dividend_yield", "label": "교환대상사 배당수익률", "type": "percentage", "unit": "%", "defaultValue": 0, "bind": "market.dividend_yield",
           "help": "교환대상 회사 기준 배당수익률." },
         { "key": "spot", "label": "교환대상사 기준일 주가", "type": "currency", "unit": "원", "required": true, "bind": "market.spot",

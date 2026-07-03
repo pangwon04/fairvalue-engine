@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FieldSchema, FormValues } from "./types";
 import { Field } from "@/components/ui/Field";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
 import { listCurves } from "@/lib/api/curves";
+import { listVolatilities } from "@/lib/api/volatilities";
 
 function curveKindOf(key: string): "RISK_FREE" | "CREDIT" | undefined {
   if (key.includes("risk_free")) return "RISK_FREE";
@@ -13,11 +15,15 @@ function curveKindOf(key: string): "RISK_FREE" | "CREDIT" | undefined {
   return undefined;
 }
 
-export function FieldRenderer({ field, value, onChange, error, values }: {
+export function FieldRenderer({ field, value, onChange, error, values, setField }: {
   field: FieldSchema; value: unknown; onChange: (v: unknown) => void; error?: string; values: FormValues;
+  setField?: (key: string, value: unknown) => void;
 }) {
   const num = (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange(e.target.value === "" ? "" : Number(e.target.value));
+
+  // ★E3b: hidden(예: volatility_ref) — 렌더 없음. buildRawForm 이 값 있을 때만 rawForm 에 싣는다.
+  if (field.type === "hidden") return null;
 
   // computed/readonly — 표시 전용
   if (field.type === "computed" || field.type === "readonly") {
@@ -52,12 +58,49 @@ export function FieldRenderer({ field, value, onChange, error, values }: {
   const type = field.type === "date" ? "date"
     : ["number", "currency", "percentage", "assetSearch"].includes(field.type) ? "number" : "text";
   const isNum = type === "number";
+  const isVolatility = field.bind === "market.volatility";
   return (
     <Field label={field.label + (field.unit ? ` (${field.unit})` : "")} required={field.required} error={error} help={field.help}>
       <Input type={type} invalid={!!error} value={value == null ? "" : String(value)}
         onChange={isNum ? num : (e) => onChange(e.target.value)}
         placeholder={field.type === "assetSearch" ? "자산 ID(이번 슬라이스: 수동 입력)" : undefined} />
+      {isVolatility && (
+        <VolatilityLoad
+          onLoad={(id, vol) => {
+            onChange(vol);
+            setField?.("volatility_ref", id);   // ★rawForm→context→input_hash 에 참조 스냅샷 기록
+          }}
+          currentRef={values["volatility_ref"]}
+        />
+      )}
     </Field>
+  );
+}
+
+/** ★E3b: 등록된 변동성 불러오기. 값 복사(필드 채움) + volatility_ref 기록. */
+function VolatilityLoad({ onLoad, currentRef }: {
+  onLoad: (id: number, vol: number) => void; currentRef: unknown;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery({ queryKey: ["volatilities", "picker"], queryFn: () => listVolatilities(), enabled: open });
+  return (
+    <div className="mt-1 text-xs">
+      <button type="button" className="text-navy-700 hover:underline" onClick={() => setOpen((o) => !o)}>
+        {open ? "닫기" : "등록된 변동성 불러오기"}
+      </button>
+      {currentRef != null && currentRef !== "" && <span className="ml-2 text-slate-500">참조: 변동성 #{String(currentRef)}</span>}
+      {open && (
+        <Select value="" onChange={(e) => {
+          const item = data?.items.find((v) => String(v.id) === e.target.value);
+          if (item) { onLoad(item.id, item.annual_vol_percent); setOpen(false); }
+        }}>
+          <option value="">{data ? "변동성 선택…" : "불러오는 중…"}</option>
+          {data?.items.map((v) => (
+            <option key={v.id} value={String(v.id)}>#{v.id} · {v.label} · {v.as_of} · {v.annual_vol_percent}%</option>
+          ))}
+        </Select>
+      )}
+    </div>
   );
 }
 

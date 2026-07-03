@@ -62,6 +62,7 @@
             "message": "신용 커브를 선택하세요.", "severity": "error" }] },
         { "key": "volatility", "label": "변동성", "type": "percentage", "unit": "%", "required": true, "bind": "market.volatility",
           "validations": [{ "rule": "volatilityPositive", "message": "변동성은 0보다 커야 합니다.", "severity": "error" }] },
+        { "key": "volatility_ref", "label": "변동성 참조(자동)", "type": "hidden", "bind": "market.volatility_ref" },
         { "key": "dividend_yield", "label": "배당수익률", "type": "percentage", "unit": "%", "defaultValue": 0, "bind": "market.dividend_yield" },
         { "key": "spot", "label": "기준일 주가/공정가치", "type": "currency", "unit": "원", "required": true, "bind": "market.spot",
           "validations": [{ "rule": "pricePositive", "message": "주가는 0보다 커야 합니다.", "severity": "error" }] }

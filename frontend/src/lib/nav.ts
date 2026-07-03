@@ -14,7 +14,7 @@ export const NAV: NavItem[] = [
     label: "파라미터 관리", href: "/parameters", active: false,
     children: [
       { label: "수익률 커브", href: "/parameters/curves", active: false },
-      { label: "변동성", href: "/parameters/volatility", active: false },
+      { label: "변동성", href: "/parameters/volatility", active: true },
     ],
   },
   { label: "평가 이력", href: "/jobs", active: false },

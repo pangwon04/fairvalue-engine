@@ -1,7 +1,7 @@
 // Form Schema (shared/schemas/form-schema.ts v0.1) 의 런타임 타입.
 export type FieldType =
   | "text" | "date" | "currency" | "percentage" | "number" | "select" | "toggle"
-  | "assetSearch" | "curveSelector" | "computed" | "readonly";
+  | "assetSearch" | "curveSelector" | "computed" | "readonly" | "hidden";
 
 export interface FieldOption { label: string; value: string | number; }
 export interface ValidationRule {

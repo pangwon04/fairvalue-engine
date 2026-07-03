@@ -57,7 +57,7 @@ export function FormRenderer({ schema, onSave, onPrice, saving, pricing, serverV
         <CardBody className="space-y-4">
           {cur.fields.filter((f) => visible(f, values)).map((f) => (
             <FieldRenderer key={f.key} field={f} value={values[f.key]} values={values}
-              error={errors[f.key]} onChange={(v) => set(f.key, v)} />
+              error={errors[f.key]} onChange={(v) => set(f.key, v)} setField={set} />
           ))}
           {serverValidation && serverValidation.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
