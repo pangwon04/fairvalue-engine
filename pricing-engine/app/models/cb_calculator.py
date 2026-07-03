@@ -24,8 +24,10 @@ from __future__ import annotations
 import math
 from datetime import date
 
-from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees
-from .gs_model import gs_value, gs_value_with_trees
+from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_split, tf_value_with_trees
+from .gs_model import gs_value, gs_value_split, gs_value_with_trees
+from .curve_bootstrap import forward_steps, curve_bootstrap_block
+from .sensitivity import sensitivity_grid
 
 
 def _to_date(s) -> date:
@@ -88,7 +90,13 @@ def calculate_cb(ctx: dict) -> dict:
     face = float(terms.get("face_value") or 10000.0)
     steps = int(options.get("lattice_steps") or 1000)
 
-    rf, rd = _rates_from_curves(ctx, t_years)
+    rf, rd = _rates_from_curves(ctx, t_years)   # 평탄 스칼라(key_parameters echo·폴백)
+    # ★E3a 결선: 스텝별 선도금리(term-structure). 커브 퇴화 시 None → 평탄 폴백.
+    curves = ctx.get("curves", {})
+    rf_curve = curves.get("risk_free_curve", []) or []
+    rd_curve = curves.get("credit_curve", []) or rf_curve
+    rf_steps_user = forward_steps(rf_curve, t_years, steps)
+    rd_steps_user = forward_steps(rd_curve, t_years, steps)
 
     # 쿠폰
     freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
@@ -131,10 +139,12 @@ def calculate_cb(ctx: dict) -> dict:
     )
 
     def run(conv_on, put_on, call_on, call_price_, call_start_):
-        return tf_value(CBLatticeSpec(
+        # ★E3a: tf_value → tf_value_split(rf_steps,rd_steps) 경로(tf_value 불변). 평탄이면 tf_value 와 1e-6 동일.
+        vb, ve = tf_value_split(CBLatticeSpec(
             conv_enabled=conv_on, put_enabled=put_on, call_enabled=call_on,
             call_price=call_price_, call_start_t=call_start_, **base,
-        ))
+        ), rf_steps=rf_steps_user, rd_steps=rd_steps_user)
+        return vb + ve
 
     # 순차 marginal (telescoping)
     r0 = run(False, False, False, 0.0, 0.0)                                   # 순수채권
@@ -187,13 +197,31 @@ def calculate_cb(ctx: dict) -> dict:
 
     # 보고서용 트리(최종 완전실행 r4 조건, 보고서용 steps). 값 12키는 위에서 사용자 steps 로 이미 산출(불변).
     rsteps = report_steps(t_years, steps)
+    rf_steps_rep = forward_steps(rf_curve, t_years, rsteps)
+    rd_steps_rep = forward_steps(rd_curve, t_years, rsteps)
     base_report = dict(base)
     base_report["steps"] = rsteps
-    _twb, _twe, trees = tf_value_with_trees(CBLatticeSpec(
-        conv_enabled=True, put_enabled=put_enabled,
-        call_enabled=call_enabled or sc_enabled,
-        call_price=(sc_price if sc_enabled else call_price), call_start_t=0.0, **base_report,
-    ))
+
+    def _full_spec(sig, s0_, st):
+        br = dict(base_report)
+        br["steps"] = st
+        br["s0"] = s0_
+        br["sigma"] = sig
+        return CBLatticeSpec(
+            conv_enabled=True, put_enabled=put_enabled,
+            call_enabled=call_enabled or sc_enabled,
+            call_price=(sc_price if sc_enabled else call_price), call_start_t=0.0, **br)
+
+    _twb, _twe, trees = tf_value_with_trees(_full_spec(sigma, s0, rsteps),
+                                            rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    trees["tree_meta"]["rate_mode"] = "BOOTSTRAPPED_FORWARD" if rf_steps_rep else "FLAT_FALLBACK"
+
+    # 민감도 3×3(report_steps, 최종 완전 spec). base 셀 == 트리 루트(1e-6).
+    def _total_at(sig, s0_):
+        vb, ve = tf_value_split(_full_spec(sig, s0_, rsteps), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+        return vb + ve
+    sensitivity = sensitivity_grid(_total_at, sigma, s0, "TF_LATTICE", rsteps)
+    curve_bootstrap = curve_bootstrap_block(rf_curve, rd_curve, t_years)
 
     key_parameters = {
         "risk_free_rate": round(rf * 100, 4),
@@ -228,6 +256,8 @@ def calculate_cb(ctx: dict) -> dict:
         "warnings": warnings,
         "errors": [],
         "trees": trees,
+        "curve_bootstrap": curve_bootstrap,
+        "sensitivity": sensitivity,
     }
 
 
@@ -283,6 +313,11 @@ def calculate_cb_gs(ctx: dict) -> dict:
     steps = int(options.get("lattice_steps") or 1000)
 
     rf, rd = _rates_from_curves(ctx, t_years)
+    curves = ctx.get("curves", {})
+    rf_curve = curves.get("risk_free_curve", []) or []
+    rd_curve = curves.get("credit_curve", []) or rf_curve
+    rf_steps_user = forward_steps(rf_curve, t_years, steps)
+    rd_steps_user = forward_steps(rd_curve, t_years, steps)
 
     freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
     coupon_per_year = (float(terms.get("coupon_rate") or 0.0) / 100.0) * face
@@ -320,7 +355,7 @@ def calculate_cb_gs(ctx: dict) -> dict:
         return gs_value(CBLatticeSpec(
             conv_enabled=conv_on, put_enabled=put_on, call_enabled=call_on,
             call_price=call_price_, call_start_t=call_start_, **base,
-        ))
+        ), rf_steps=rf_steps_user, rd_steps=rd_steps_user)
 
     r0 = run(False, False, False, 0.0, 0.0)
     r1 = run(True, False, False, 0.0, 0.0)
@@ -367,13 +402,29 @@ def calculate_cb_gs(ctx: dict) -> dict:
     ytm = _solve_ytm(r0, coupon_per_year, freq, face, t_years)
 
     rsteps = report_steps(t_years, steps)
+    rf_steps_rep = forward_steps(rf_curve, t_years, rsteps)
+    rd_steps_rep = forward_steps(rd_curve, t_years, rsteps)
     base_report = dict(base)
     base_report["steps"] = rsteps
-    _twb, _twe, trees = gs_value_with_trees(CBLatticeSpec(
-        conv_enabled=True, put_enabled=put_enabled,
-        call_enabled=call_enabled or sc_enabled,
-        call_price=(sc_price if sc_enabled else call_price), call_start_t=0.0, **base_report,
-    ))
+
+    def _full_spec(sig, s0_, st):
+        br = dict(base_report)
+        br["steps"] = st
+        br["s0"] = s0_
+        br["sigma"] = sig
+        return CBLatticeSpec(
+            conv_enabled=True, put_enabled=put_enabled,
+            call_enabled=call_enabled or sc_enabled,
+            call_price=(sc_price if sc_enabled else call_price), call_start_t=0.0, **br)
+
+    _twb, _twe, trees = gs_value_with_trees(_full_spec(sigma, s0, rsteps),
+                                            rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    trees["tree_meta"]["rate_mode"] = "BOOTSTRAPPED_FORWARD" if rf_steps_rep else "FLAT_FALLBACK"
+
+    def _total_at(sig, s0_):
+        return gs_value(_full_spec(sig, s0_, rsteps), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    sensitivity = sensitivity_grid(_total_at, sigma, s0, "GS", rsteps)
+    curve_bootstrap = curve_bootstrap_block(rf_curve, rd_curve, t_years)
 
     key_parameters = {
         "risk_free_rate": round(rf * 100, 4),
@@ -408,4 +459,6 @@ def calculate_cb_gs(ctx: dict) -> dict:
         "warnings": warnings,
         "errors": [],
         "trees": trees,
+        "curve_bootstrap": curve_bootstrap,
+        "sensitivity": sensitivity,
     }

@@ -26,23 +26,33 @@ from __future__ import annotations
 import math
 
 from .cb_calculator import _rates_from_curves, _solve_ytm, _to_date, _year_frac
-from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees, crr_params, _coupon_steps
+from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_split, tf_value_with_trees, crr_params, _coupon_steps
 from .gs_model import gs_value, gs_value_with_trees
+from .curve_bootstrap import forward_steps, curve_bootstrap_block
+from .sensitivity import sensitivity_grid
 
 
-def _standalone_call(s0, K, sigma, T, rf, q, steps, shares, df, american, w_start_t, w_end_t):
+def _standalone_call(s0, K, sigma, T, rf, q, steps, shares, df, american, w_start_t, w_end_t, rf_steps=None):
     """분리형 독립 신주인수권 = 자사주 콜. payoff df·(S−K) (페이오프 희석). @rf.
-    american 이면 window[w_start,w_end] 내 조기행사, 아니면 만기만. shares 배."""
+    american 이면 window[w_start,w_end] 내 조기행사, 아니면 만기만. shares 배.
+    ★E3a: rf_steps(스텝별 forward) 주입 시 스텝별 할인·드리프트(평탄이면 flat 동일)."""
     dt = T / steps
-    u, d, p = crr_params(sigma, dt, rf, q)
-    disc = math.exp(-rf * dt)
+    u = math.exp(sigma * math.sqrt(dt))
+    d = 1.0 / u
     u2 = u * u
+
+    def rf_at(st):
+        return rf_steps[st] if rf_steps is not None else rf
+
     V = [0.0] * (steps + 1)
     s = s0 * (d ** steps)
     for j in range(steps + 1):
         V[j] = max(df * (s - K), 0.0)
         s *= u2
     for step in range(steps - 1, -1, -1):
+        rfn = rf_at(step)
+        p = (math.exp((rfn - q) * dt) - d) / (u - d)
+        disc = math.exp(-rfn * dt)
         t = step * dt
         s = s0 * (d ** step)
         nV = [0.0] * (step + 1)
@@ -57,14 +67,22 @@ def _standalone_call(s0, K, sigma, T, rf, q, steps, shares, df, american, w_star
 
 
 def _bw_composite(s0, sigma, T, steps, rf, rd, q, face, coupon_per_year, freq,
-                  shares, K, df, warr_on, w_start_t, w_end_t, put_on, put_price, put_start_t):
+                  shares, K, df, warr_on, w_start_t, w_end_t, put_on, put_price, put_start_t,
+                  rf_steps=None, rd_steps=None):
     """비분리형 복합격자 (tf_value 미러). 노드별 max(채권보유, 신주인수권 행사).
-    행사 payoff = shares·df·(S−K) (페이오프 희석, 지분 Ve). df=1,K=0,put off → CB 전환과 동일."""
+    행사 payoff = shares·df·(S−K) (페이오프 희석, 지분 Ve). df=1,K=0,put off → CB 전환과 동일.
+    ★E3a: rf_steps/rd_steps 주입 시 스텝별 forward(평탄이면 flat 동일)."""
     n = steps
     dt = T / n
-    u, d, p = crr_params(sigma, dt, rf, q)
-    disc_e = math.exp(-rf * dt)
-    disc_b = math.exp(-rd * dt)
+    u = math.exp(sigma * math.sqrt(dt))
+    d = 1.0 / u
+
+    def rf_at(st):
+        return rf_steps[st] if rf_steps is not None else rf
+
+    def rd_at(st):
+        return rd_steps[st] if rd_steps is not None else rd
+
     cpn = (coupon_per_year / freq) if freq > 0 else 0.0
     coupon_at = _coupon_steps(CBLatticeSpec(
         s0=s0, sigma=sigma, t_years=T, steps=steps, rf=rf, rd=rd, q=q,
@@ -84,6 +102,11 @@ def _bw_composite(s0, sigma, T, steps, rf, rd, q, face, coupon_per_year, freq,
             Ve[j] = 0.0
         s *= u2
     for step in range(n - 1, -1, -1):
+        rfn = rf_at(step)
+        rdn = rd_at(step)
+        p = (math.exp((rfn - q) * dt) - d) / (u - d)
+        disc_e = math.exp(-rfn * dt)
+        disc_b = math.exp(-rdn * dt)
         t = step * dt
         s = s0 * (d ** step)
         nVb = [0.0] * (step + 1)
@@ -109,13 +132,23 @@ def _bw_composite(s0, sigma, T, steps, rf, rd, q, face, coupon_per_year, freq,
 
 
 def _bw_composite_gs(s0, sigma, T, steps, rf, rd, q, face, coupon_per_year, freq,
-                     shares, K, df, warr_on, w_start_t, w_end_t, put_on, put_price, put_start_t):
+                     shares, K, df, warr_on, w_start_t, w_end_t, put_on, put_price, put_start_t,
+                     rf_steps=None, rd_steps=None):
     """비분리형 복합격자 — GS(전환확률 가중 할인) 버전.
     노드별 max(채권보유, 신주인수권 행사). 행사 payoff = shares·df·(S−K)(지분, q=1),
-    풋(현금, q=0). 할인 y=q·rf+(1−q)·rd. df=1,K=0,put off 이면 GS 전환격자와 동일."""
+    풋(현금, q=0). 할인 y=q·rf+(1−q)·rd. df=1,K=0,put off 이면 GS 전환격자와 동일.
+    ★E3a: rf_steps/rd_steps 주입 시 노드별 forward(평탄이면 flat 동일)."""
     n = steps
     dt = T / n
-    u, d, p = crr_params(sigma, dt, rf, q)
+    u = math.exp(sigma * math.sqrt(dt))
+    d = 1.0 / u
+
+    def rf_at(st):
+        return rf_steps[st] if rf_steps is not None else rf
+
+    def rd_at(st):
+        return rd_steps[st] if rd_steps is not None else rd
+
     cpn = (coupon_per_year / freq) if freq > 0 else 0.0
     coupon_at = _coupon_steps(CBLatticeSpec(
         s0=s0, sigma=sigma, t_years=T, steps=steps, rf=rf, rd=rd, q=q,
@@ -133,13 +166,16 @@ def _bw_composite_gs(s0, sigma, T, steps, rf, rd, q, face, coupon_per_year, freq
             V[j] = redemption; Q[j] = 0.0
         s *= u2
     for step in range(n - 1, -1, -1):
+        rfn = rf_at(step)
+        rdn = rd_at(step)
+        p = (math.exp((rfn - q) * dt) - d) / (u - d)
         t = step * dt
         s = s0 * (d ** step)
         nV = [0.0] * (step + 1)
         nQ = [0.0] * (step + 1)
         for j in range(step + 1):
             q_cont = p * Q[j + 1] + (1 - p) * Q[j]
-            y = q_cont * rf + (1 - q_cont) * rd
+            y = q_cont * rfn + (1 - q_cont) * rdn
             cont = math.exp(-y * dt) * (p * V[j + 1] + (1 - p) * V[j])
             if step in coupon_at:
                 cont += cpn
@@ -180,6 +216,11 @@ def calculate_bw(ctx: dict) -> dict:
     steps = int(options.get("lattice_steps") or 300)
 
     rf, rd = _rates_from_curves(ctx, t_years)
+    curves = ctx.get("curves", {})
+    rf_curve = curves.get("risk_free_curve", []) or []
+    rd_curve = curves.get("credit_curve", []) or rf_curve
+    rf_steps_user = forward_steps(rf_curve, t_years, steps)
+    rd_steps_user = forward_steps(rd_curve, t_years, steps)
     freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
     coupon_per_year = (float(terms.get("coupon_rate") or 0.0) / 100.0) * face
 
@@ -208,21 +249,24 @@ def calculate_bw(ctx: dict) -> dict:
     put_price = face * (1.0 + ytp) ** max(0.0, _year_frac(issue_date, put_date))
     put_start_t = max(0.0, _year_frac(val_date, put_date)) if put.get("start") else 0.0
 
-    # 채권 host (전환/풋 off) = CB 순수채권 @rd
+    # 채권 host (전환/풋 off) = CB 순수채권 @rd. ★E3a: tf_value_split(forward)로 결선.
     bond_spec = CBLatticeSpec(
         s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf, rd=rd, q=q,
         face=face, coupon_per_year=coupon_per_year, freq=freq, conv_enabled=False, put_enabled=False)
-    bond_value = tf_value(bond_spec)
+    _bvb, _bve = tf_value_split(bond_spec, rf_steps=rf_steps_user, rd_steps=rd_steps_user)
+    bond_value = _bvb + _bve
 
     if separable:
         # 분리형: 채권·워런트 독립. 상환은 채권에만.
-        bond_put = tf_value(CBLatticeSpec(
+        _pvb, _pve = tf_value_split(CBLatticeSpec(
             s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf, rd=rd, q=q,
             face=face, coupon_per_year=coupon_per_year, freq=freq, conv_enabled=False,
-            put_enabled=put_on, put_price=put_price, put_start_t=put_start_t))
+            put_enabled=put_on, put_price=put_price, put_start_t=put_start_t),
+            rf_steps=rf_steps_user, rd_steps=rd_steps_user)
+        bond_put = _pvb + _pve
         redemption_option_value = bond_put - bond_value
-        w_undil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, 1.0, american, w_start_t, w_end_t)
-        w_dil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, df, american, w_start_t, w_end_t)
+        w_undil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, 1.0, american, w_start_t, w_end_t, rf_steps=rf_steps_user)
+        w_dil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, df, american, w_start_t, w_end_t, rf_steps=rf_steps_user)
         warrant_value = w_undil
         dilution_effect = w_dil - w_undil
         total = bond_value + warrant_value + dilution_effect + redemption_option_value
@@ -230,7 +274,8 @@ def calculate_bw(ctx: dict) -> dict:
         # 비분리형: 복합격자(얽힘). telescoping 으로 12키 분해.
         def comp(df_, warr, put_):
             return _bw_composite(s0, sigma, t_years, steps, rf, rd, q, face, coupon_per_year, freq,
-                                 quantity, K, df_, warr, w_start_t, w_end_t, put_, put_price, put_start_t)
+                                 quantity, K, df_, warr, w_start_t, w_end_t, put_, put_price, put_start_t,
+                                 rf_steps=rf_steps_user, rd_steps=rd_steps_user)
         base_bond = comp(1.0, False, False)          # = bond_value (전환/풋 off)
         w_undil_c = comp(1.0, True, False)           # +워런트(미희석)
         w_dil_c = comp(df, True, False)              # 희석 반영
@@ -246,12 +291,25 @@ def calculate_bw(ctx: dict) -> dict:
 
     # 보고서용 트리 — 기초자산(자사주)·가치 시각화. TF 격자 표현(행사가·희석·분리형은 12키 값에 반영).
     _rsteps = report_steps(t_years, steps)
-    _rb, _re, trees = tf_value_with_trees(CBLatticeSpec(
-        s0=s0, sigma=sigma, t_years=t_years, steps=_rsteps, rf=rf, rd=rd, q=q,
-        face=face, coupon_per_year=coupon_per_year, freq=freq,
-        conv_enabled=True, conv_ratio=quantity, conv_start_t=(w_start_t if american else t_years),
-        put_enabled=put_on, put_price=put_price, put_start_t=put_start_t,
-    ))
+    rf_steps_rep = forward_steps(rf_curve, t_years, _rsteps)
+    rd_steps_rep = forward_steps(rd_curve, t_years, _rsteps)
+
+    def _rep_spec(sig, s0_):
+        return CBLatticeSpec(
+            s0=s0_, sigma=sig, t_years=t_years, steps=_rsteps, rf=rf, rd=rd, q=q,
+            face=face, coupon_per_year=coupon_per_year, freq=freq,
+            conv_enabled=True, conv_ratio=quantity, conv_start_t=(w_start_t if american else t_years),
+            put_enabled=put_on, put_price=put_price, put_start_t=put_start_t)
+
+    _rb, _re, trees = tf_value_with_trees(_rep_spec(sigma, s0), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    trees["tree_meta"]["rate_mode"] = "BOOTSTRAPPED_FORWARD" if rf_steps_rep else "FLAT_FALLBACK"
+
+    # 민감도 — 트리 표현 spec(base 셀 == 트리 루트 1e-6). 행사가·희석·분리형은 12키에만 반영.
+    def _total_at(sig, s0_):
+        vb, ve = tf_value_split(_rep_spec(sig, s0_), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+        return vb + ve
+    sensitivity = sensitivity_grid(_total_at, sigma, s0, "TF_LATTICE", _rsteps)
+    curve_bootstrap = curve_bootstrap_block(rf_curve, rd_curve, t_years)
 
     components = {
         "bond_value": round(bond_value, 4),
@@ -302,6 +360,8 @@ def calculate_bw(ctx: dict) -> dict:
         "warnings": [{"code": "W204", "message": f"BW {mode}·{style} 행사·df={df:.4f}(페이오프 희석 3.4.1.4). 외부 실보고서 미검증(self-consistency/골든/MC/CB정합성으로 보증)", "stage": "model"}],
         "errors": [],
         "trees": trees,
+        "curve_bootstrap": curve_bootstrap,
+        "sensitivity": sensitivity,
     }
 
 
@@ -330,6 +390,11 @@ def calculate_bw_gs(ctx: dict) -> dict:
     steps = int(options.get("lattice_steps") or 300)
 
     rf, rd = _rates_from_curves(ctx, t_years)
+    curves = ctx.get("curves", {})
+    rf_curve = curves.get("risk_free_curve", []) or []
+    rd_curve = curves.get("credit_curve", []) or rf_curve
+    rf_steps_user = forward_steps(rf_curve, t_years, steps)
+    rd_steps_user = forward_steps(rd_curve, t_years, steps)
     freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
     coupon_per_year = (float(terms.get("coupon_rate") or 0.0) / 100.0) * face
 
@@ -355,26 +420,29 @@ def calculate_bw_gs(ctx: dict) -> dict:
     put_price = face * (1.0 + ytp) ** max(0.0, _year_frac(issue_date, put_date))
     put_start_t = max(0.0, _year_frac(val_date, put_date)) if put.get("start") else 0.0
 
-    # 채권 host (전환/풋 off) = GS 순수채권(q≡0 → rd 할인)
+    # 채권 host (전환/풋 off) = GS 순수채권(q≡0 → rd 할인). ★E3a forward 결선.
     bond_value = gs_value(CBLatticeSpec(
         s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf, rd=rd, q=q,
-        face=face, coupon_per_year=coupon_per_year, freq=freq, conv_enabled=False, put_enabled=False))
+        face=face, coupon_per_year=coupon_per_year, freq=freq, conv_enabled=False, put_enabled=False),
+        rf_steps=rf_steps_user, rd_steps=rd_steps_user)
 
     if separable:
         bond_put = gs_value(CBLatticeSpec(
             s0=s0, sigma=sigma, t_years=t_years, steps=steps, rf=rf, rd=rd, q=q,
             face=face, coupon_per_year=coupon_per_year, freq=freq, conv_enabled=False,
-            put_enabled=put_on, put_price=put_price, put_start_t=put_start_t))
+            put_enabled=put_on, put_price=put_price, put_start_t=put_start_t),
+            rf_steps=rf_steps_user, rd_steps=rd_steps_user)
         redemption_option_value = bond_put - bond_value
-        w_undil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, 1.0, american, w_start_t, w_end_t)
-        w_dil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, df, american, w_start_t, w_end_t)
+        w_undil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, 1.0, american, w_start_t, w_end_t, rf_steps=rf_steps_user)
+        w_dil = _standalone_call(s0, K, sigma, t_years, rf, q, steps, quantity, df, american, w_start_t, w_end_t, rf_steps=rf_steps_user)
         warrant_value = w_undil
         dilution_effect = w_dil - w_undil
         total = bond_value + warrant_value + dilution_effect + redemption_option_value
     else:
         def comp(df_, warr, put_):
             return _bw_composite_gs(s0, sigma, t_years, steps, rf, rd, q, face, coupon_per_year, freq,
-                                    quantity, K, df_, warr, w_start_t, w_end_t, put_, put_price, put_start_t)
+                                    quantity, K, df_, warr, w_start_t, w_end_t, put_, put_price, put_start_t,
+                                    rf_steps=rf_steps_user, rd_steps=rd_steps_user)
         base_bond = comp(1.0, False, False)
         w_undil_c = comp(1.0, True, False)
         w_dil_c = comp(df, True, False)
@@ -389,12 +457,23 @@ def calculate_bw_gs(ctx: dict) -> dict:
         dilution_effect = 0.0
 
     _rsteps = report_steps(t_years, steps)
-    _rb, _re, trees = gs_value_with_trees(CBLatticeSpec(
-        s0=s0, sigma=sigma, t_years=t_years, steps=_rsteps, rf=rf, rd=rd, q=q,
-        face=face, coupon_per_year=coupon_per_year, freq=freq,
-        conv_enabled=True, conv_ratio=quantity, conv_start_t=(w_start_t if american else t_years),
-        put_enabled=put_on, put_price=put_price, put_start_t=put_start_t,
-    ))
+    rf_steps_rep = forward_steps(rf_curve, t_years, _rsteps)
+    rd_steps_rep = forward_steps(rd_curve, t_years, _rsteps)
+
+    def _rep_spec(sig, s0_):
+        return CBLatticeSpec(
+            s0=s0_, sigma=sig, t_years=t_years, steps=_rsteps, rf=rf, rd=rd, q=q,
+            face=face, coupon_per_year=coupon_per_year, freq=freq,
+            conv_enabled=True, conv_ratio=quantity, conv_start_t=(w_start_t if american else t_years),
+            put_enabled=put_on, put_price=put_price, put_start_t=put_start_t)
+
+    _rb, _re, trees = gs_value_with_trees(_rep_spec(sigma, s0), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    trees["tree_meta"]["rate_mode"] = "BOOTSTRAPPED_FORWARD" if rf_steps_rep else "FLAT_FALLBACK"
+
+    def _total_at(sig, s0_):
+        return gs_value(_rep_spec(sig, s0_), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    sensitivity = sensitivity_grid(_total_at, sigma, s0, "GS", _rsteps)
+    curve_bootstrap = curve_bootstrap_block(rf_curve, rd_curve, t_years)
 
     components = {
         "bond_value": round(bond_value, 4),
@@ -445,4 +524,6 @@ def calculate_bw_gs(ctx: dict) -> dict:
         "warnings": [{"code": "W210", "message": f"GS(전환확률 가중 할인) 모형 — BW {mode}·{style}·df={df:.4f}. TF 와 값 상이(비분리형)", "stage": "model"}],
         "errors": [],
         "trees": trees,
+        "curve_bootstrap": curve_bootstrap,
+        "sensitivity": sensitivity,
     }

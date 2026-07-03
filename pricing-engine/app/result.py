@@ -143,6 +143,8 @@ class PricingResult(BaseModel):
     warnings: list[Issue] = Field(default_factory=list)
     errors: list[Issue] = Field(default_factory=list)
     trees: Optional[dict] = None        # 보고서용 트리(underlying/equity/debt/composite/prob/meta). 하위호환.
+    curve_bootstrap: Optional[dict] = None  # 이자율 산정표(rf/rd × ytm/spot/forward, 0.5y). 하위호환(E3a).
+    sensitivity: Optional[dict] = None      # 민감도 3×3(vol×spot, report_steps). 하위호환(E3a).
 
     @model_validator(mode="after")
     def _check_top_total_matches_components(self) -> "PricingResult":

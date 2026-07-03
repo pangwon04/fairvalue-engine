@@ -28,8 +28,10 @@ from __future__ import annotations
 from datetime import date
 
 from .cb_calculator import _rates_from_curves, _solve_ytm, _to_date, _year_frac
-from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_with_trees
+from .tf_lattice import CBLatticeSpec, report_steps, tf_value, tf_value_split, tf_value_with_trees
 from .gs_model import gs_value, gs_value_with_trees
+from .curve_bootstrap import forward_steps, curve_bootstrap_block
+from .sensitivity import sensitivity_grid
 
 
 def calculate_eb(ctx: dict) -> dict:
@@ -50,6 +52,11 @@ def calculate_eb(ctx: dict) -> dict:
     steps = int(options.get("lattice_steps") or 500)
 
     rf, rd = _rates_from_curves(ctx, t_years)   # 발행사 무위험/신용
+    curves = ctx.get("curves", {})
+    rf_curve = curves.get("risk_free_curve", []) or []
+    rd_curve = curves.get("credit_curve", []) or rf_curve
+    rf_steps_user = forward_steps(rf_curve, t_years, steps)
+    rd_steps_user = forward_steps(rd_curve, t_years, steps)
 
     # 쿠폰(발행사 채권)
     freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
@@ -89,10 +96,11 @@ def calculate_eb(ctx: dict) -> dict:
     )
 
     def run(ex_on, put_on):
-        return tf_value(CBLatticeSpec(
+        vb, ve = tf_value_split(CBLatticeSpec(
             conv_enabled=ex_on, put_enabled=put_on, call_enabled=False,
             call_price=0.0, call_start_t=0.0, **base,
-        ))
+        ), rf_steps=rf_steps_user, rd_steps=rd_steps_user)
+        return vb + ve
 
     # telescoping (희석·발행자콜·매도청구권 없음 — EB)
     r0 = run(False, False)                 # 순수채권(발행사) = bond host (CB 와 동일 로직)
@@ -101,11 +109,24 @@ def calculate_eb(ctx: dict) -> dict:
 
     # 보고서용 트리(최종 실행 = 교환 on + 풋, 보고서용 steps). 12키 값 불변.
     _rsteps = report_steps(t_years, steps)
+    rf_steps_rep = forward_steps(rf_curve, t_years, _rsteps)
+    rd_steps_rep = forward_steps(rd_curve, t_years, _rsteps)
     _base_r = dict(base); _base_r["steps"] = _rsteps
     _rb, _re, trees = tf_value_with_trees(CBLatticeSpec(
         conv_enabled=True, put_enabled=put_enabled, call_enabled=False,
         call_price=0.0, call_start_t=0.0, **_base_r,
-    ))
+    ), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    trees["tree_meta"]["rate_mode"] = "BOOTSTRAPPED_FORWARD" if rf_steps_rep else "FLAT_FALLBACK"
+
+    def _total_at(sig, s0_):
+        br = dict(_base_r); br["s0"] = s0_; br["sigma"] = sig
+        vb, ve = tf_value_split(CBLatticeSpec(
+            conv_enabled=True, put_enabled=put_enabled, call_enabled=False,
+            call_price=0.0, call_start_t=0.0, **br,
+        ), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+        return vb + ve
+    sensitivity = sensitivity_grid(_total_at, tgt_vol, tgt_spot, "TF_LATTICE", _rsteps)
+    curve_bootstrap = curve_bootstrap_block(rf_curve, rd_curve, t_years)
 
     bond_value = r0
     exchange_option_value = r1 - r0
@@ -161,6 +182,8 @@ def calculate_eb(ctx: dict) -> dict:
         "warnings": [{"code": "W203", "message": f"EB 교환옵션 underlying={src_kind}(타사주, 비상장 명시입력 전제). 상관관계 미반영. 외부 실보고서 미검증(self-consistency/골든/MC/CB정합성으로 보증)", "stage": "model"}],
         "errors": [],
         "trees": trees,
+        "curve_bootstrap": curve_bootstrap,
+        "sensitivity": sensitivity,
     }
 
 
@@ -184,6 +207,11 @@ def calculate_eb_gs(ctx: dict) -> dict:
     steps = int(options.get("lattice_steps") or 500)
 
     rf, rd = _rates_from_curves(ctx, t_years)
+    curves = ctx.get("curves", {})
+    rf_curve = curves.get("risk_free_curve", []) or []
+    rd_curve = curves.get("credit_curve", []) or rf_curve
+    rf_steps_user = forward_steps(rf_curve, t_years, steps)
+    rd_steps_user = forward_steps(rd_curve, t_years, steps)
 
     freq = int(round(12 / terms["coupon_freq_month"])) if terms.get("coupon_freq_month") else 0
     coupon_per_year = (float(terms.get("coupon_rate") or 0.0) / 100.0) * face
@@ -221,18 +249,30 @@ def calculate_eb_gs(ctx: dict) -> dict:
         return gs_value(CBLatticeSpec(
             conv_enabled=ex_on, put_enabled=put_on, call_enabled=False,
             call_price=0.0, call_start_t=0.0, **base,
-        ))
+        ), rf_steps=rf_steps_user, rd_steps=rd_steps_user)
 
     r0 = run(False, False)
     r1 = run(True, False)
     r2 = run(True, put_enabled)
 
     _rsteps = report_steps(t_years, steps)
+    rf_steps_rep = forward_steps(rf_curve, t_years, _rsteps)
+    rd_steps_rep = forward_steps(rd_curve, t_years, _rsteps)
     _base_r = dict(base); _base_r["steps"] = _rsteps
     _rb, _re, trees = gs_value_with_trees(CBLatticeSpec(
         conv_enabled=True, put_enabled=put_enabled, call_enabled=False,
         call_price=0.0, call_start_t=0.0, **_base_r,
-    ))
+    ), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    trees["tree_meta"]["rate_mode"] = "BOOTSTRAPPED_FORWARD" if rf_steps_rep else "FLAT_FALLBACK"
+
+    def _total_at(sig, s0_):
+        br = dict(_base_r); br["s0"] = s0_; br["sigma"] = sig
+        return gs_value(CBLatticeSpec(
+            conv_enabled=True, put_enabled=put_enabled, call_enabled=False,
+            call_price=0.0, call_start_t=0.0, **br,
+        ), rf_steps=rf_steps_rep, rd_steps=rd_steps_rep)
+    sensitivity = sensitivity_grid(_total_at, tgt_vol, tgt_spot, "GS", _rsteps)
+    curve_bootstrap = curve_bootstrap_block(rf_curve, rd_curve, t_years)
 
     bond_value = r0
     exchange_option_value = r1 - r0
@@ -287,4 +327,6 @@ def calculate_eb_gs(ctx: dict) -> dict:
         "warnings": [{"code": "W210", "message": f"GS(전환확률 가중 할인) 모형 — EB 교환옵션 underlying={src_kind}. TF 와 값 상이(정상)", "stage": "model"}],
         "errors": [],
         "trees": trees,
+        "curve_bootstrap": curve_bootstrap,
+        "sensitivity": sensitivity,
     }
