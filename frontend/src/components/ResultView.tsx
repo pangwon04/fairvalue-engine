@@ -17,6 +17,18 @@ const fmt = (n: number | null | undefined) =>
 
 export function ResultView({ result }: { result: PricingResult }) {
   const c = result.components;
+  if (!c) {
+    const errs = (result as unknown as { errors?: Array<{ message?: string } | string> }).errors ?? [];
+    return (
+      <div className="p-4 text-sm">
+        <p className="font-semibold text-red-700">평가 실패(FAILED) — 결과 데이터가 없습니다.</p>
+        {errs.map((e, i) => (
+          <p key={i} className="text-red-600">{typeof e === "string" ? e : e?.message ?? JSON.stringify(e)}</p>
+        ))}
+        <p className="text-gray-500 mt-2">상세 원인은 위 메시지 또는 엔진(uvicorn)·백엔드 콘솔에서 확인할 수 있습니다.</p>
+      </div>
+    );
+  }
   const sum = SUM_KEYS.reduce((a, k) => a + (((c as unknown as Record<string, number | null>)[k]) ?? 0), 0);
   const total = c.total_fair_value ?? result.total_fair_value ?? 0;
   const ok = Math.abs(sum - total) <= 0.01;
