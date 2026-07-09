@@ -64,7 +64,9 @@ services:
       engine:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      # ★ JRE 이미지엔 curl/wget 없음 + localhost 가 IPv6(::1)로 풀려 실패 가능.
+      #   추가 도구 없이 bash /dev/tcp 로 8080(IPv4) 접속만 확인(/health 는 permitAll·200이라 포트=준비 신호).
+      test: ["CMD-SHELL", "bash -c ': < /dev/tcp/127.0.0.1/8080' || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -74,8 +76,9 @@ services:
   # ---- Frontend (Next standalone, 미공개) -----------------------------------
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      # ★ 컨텍스트=루트: 프론트가 type-only 로 ../shared 를 참조하므로 shared/ 가 필요.
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         # ★ Next 특성: 빌드 시점 인라인. DOMAIN 변경 시 --build 필수.
         NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN}
@@ -85,7 +88,9 @@ services:
       backend:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000/ || exit 1"]
+      # ★ alpine 엔 bash 없음(/dev/tcp 불가) + busybox wget 이 localhost→IPv6(::1)로 실패 가능.
+      #   런타임에 이미 있는 node 로 127.0.0.1(IPv4) HTTP 확인(추가 도구 없음).
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/',res=>process.exit(res.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 10

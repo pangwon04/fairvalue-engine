@@ -1,5 +1,7 @@
-# 백엔드 빌드 컨텍스트(= 저장소 루트) 최소화.
-#   backend/ + shared/ + frontend/src/forms/productSchemas 만 실제로 필요하다.
+# 루트 컨텍스트 빌드(backend·frontend 둘 다 context=".")에서 공통 적용되는 .dockerignore.
+#   backend 빌드: backend/ + shared/ + frontend/src/forms/productSchemas 필요.
+#   frontend 빌드: frontend/ + shared/ 필요(type-only ../shared 참조).
+#   → 아래 제외는 두 빌드 모두에 안전(node_modules·.next·build 등 산출물/캐시만 제외).
 .git
 .github
 **/node_modules

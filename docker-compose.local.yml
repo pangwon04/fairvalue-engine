@@ -16,6 +16,9 @@ services:
 
   frontend:
     build:
+      # ★ 베이스와 동일하게 컨텍스트=루트(shared/ 필요). 명시로 병합 모호성 제거.
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
         NEXT_PUBLIC_DEMO_BANNER: ${NEXT_PUBLIC_DEMO_BANNER:-true}

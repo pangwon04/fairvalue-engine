@@ -33,9 +33,7 @@ RUN cp "build/libs/$(ls build/libs | grep -vE 'plain' | grep -E '\.jar$' | head 
 
 # ---- 런타임 스테이지 --------------------------------------------------------
 FROM eclipse-temurin:21-jre-jammy AS runtime
-# healthcheck(curl)용 최소 패키지
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+# ★ 헬스체크는 추가 도구 없이 bash /dev/tcp 로 수행(아래 compose 참고) → curl/wget 설치 불요.
 WORKDIR /app
 # 초소형 VPS(RAM 2~3GB) 대비 힙 상한.
 ENV JAVA_TOOL_OPTIONS="-Xmx768m"
