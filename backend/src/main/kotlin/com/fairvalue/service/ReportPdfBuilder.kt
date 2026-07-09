@@ -159,10 +159,10 @@ class ReportPdfBuilder {
     // ── 섹션: 제목바(네이비/흰) + 내용들을 단일 keepTogether 외곽 셀에 담는다(P1·P2) ──
     private fun section(doc: Document, bf: BaseFont, title: String, vararg content: Element) {
         val outer = PdfPTable(1)
-        outer.widthPercentage = 100f
+        outer.setWidthPercentage(100f)
         outer.setKeepTogether(true)
-        outer.spacingBefore = 14f
-        outer.spacingAfter = 8f
+        outer.setSpacingBefore(14f)
+        outer.setSpacingAfter(8f)
         val tc = PdfPCell(Phrase(title, Font(bf, 11f, Font.BOLD, WHITE)))
         tc.backgroundColor = NAVY; tc.setPadding(5f); tc.border = Rectangle.NO_BORDER
         outer.addCell(tc)
