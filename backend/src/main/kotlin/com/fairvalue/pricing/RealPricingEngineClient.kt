@@ -4,6 +4,7 @@ import com.fairvalue.domain.InstrumentEntity
 import com.fairvalue.dto.PricingResult
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -38,8 +39,10 @@ class RealPricingEngineClient(
         .connectTimeout(Duration.ofSeconds(5))
 	.build()
 
-    override fun price(context: ResolvedContext, instrument: InstrumentEntity, jobId: Long): PricingResult {
-        // 식별자 주입(엔진 echo). contextJson 은 그대로 전송.
+    private val log = LoggerFactory.getLogger(RealPricingEngineClient::class.java)
+
+    override fun price(context: ResolvedContext, instrument: InstrumentEntity, jobId: Long): PricingOutcome {
+        // 식별자 주입(엔진 echo). contextJson 은 그대로 전송(input_hash 포함 — resolver 가 주입).
         val ctx: ObjectNode = context.contextJson.deepCopy()
         ctx.put("job_id", jobId)
         ctx.put("instrument_id", instrument.id!!)
@@ -64,18 +67,36 @@ class RealPricingEngineClient(
             )
         }
 
-        val parsed = try {
-            mapper.readValue(response.body(), PricingResult::class.java)
+        // ★수정 A: 원문 보존. 미지 옵션 키(trees·curve_bootstrap·sensitivity 등)를 소실시키지 않는다.
+        val raw: ObjectNode = try {
+            mapper.readTree(response.body()) as ObjectNode
         } catch (e: Exception) {
             throw EngineCallException("엔진 응답 파싱 실패: ${e.message}", e)
         }
+        // 식별자는 백엔드 권위값으로 확정(원문에도 반영해 저장 일관성 유지).
+        raw.put("job_id", jobId)
+        raw.put("instrument_id", instrument.id!!)
+        raw.put("instrument_type", instrument.type.name)
 
-        // job_id/instrument_id/type 은 백엔드 권위값으로 확정.
-        return parsed.copy(
-            jobId = jobId,
-            instrumentId = instrument.id!!,
-            instrumentType = instrument.type.name,
-        )
+        // 검증·total 추출용 타입 파싱(동작 불변). 실패 시 엔진 오류.
+        val parsed = try {
+            mapper.treeToValue(raw, PricingResult::class.java)
+        } catch (e: Exception) {
+            throw EngineCallException("엔진 응답 스키마 불일치: ${e.message}", e)
+        }
+
+        // ★수정 B: input_hash echo 검증(하드 실패 금지 — 관측 우선). 불일치 시 로그 + warnings 기록.
+        val echoed = raw.path("reproducibility").path("input_hash").asText("")
+        if (echoed != context.inputHash) {
+            log.warn("input_hash echo 불일치 job={} 주입={} echo={}", jobId, context.inputHash, echoed)
+            (raw.withArray("warnings")).add(
+                mapper.createObjectNode()
+                    .put("code", "W301")
+                    .put("message", "엔진 echo input_hash 불일치(주입=${context.inputHash}, echo=$echoed)")
+                    .put("stage", "engine"),
+            )
+        }
+        return PricingOutcome(raw = raw, result = parsed)
     }
 }
 

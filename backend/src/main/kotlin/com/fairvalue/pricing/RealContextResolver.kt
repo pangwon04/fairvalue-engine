@@ -79,7 +79,11 @@ class RealContextResolver(
         curves.remove("risk_free_ref")
         curves.remove("credit_ref")
 
+        // ★5-8fix(수정 B): canonical 컨텍스트로 해시 산출 후 ctx.input_hash 에 주입.
+        //   canonicalize 가 input_hash 를 대상 필드에서 제외하므로 주입해도 해시 불변(자기참조 없음).
+        //   이 ctx 가 엔진 전송 payload + V6 contextJson 저장의 공통 원본 → 둘 다 실 해시 반영.
         val inputHash = InputHash.ofJson(mapper.writeValueAsString(ctx))
+        ctx.put("input_hash", inputHash)
         return ResolvedContext(
             type = type, valuationDate = valuationDateStr, model = model, seed = seed,
             modelVersion = modelVersion, inputHash = inputHash, contextJson = ctx,

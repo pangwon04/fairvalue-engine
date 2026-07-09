@@ -545,6 +545,123 @@ paths:
                   context: { type: [object, 'null'] }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ------------------------------------------------------------- 5-8 (additive)
+  # 참고: GET /jobs 에 include_hidden(boolean, 기본 false) 쿼리 파라미터 추가(숨김 제외).
+  /jobs/batch-delete:
+    post:
+      tags: [Pricing]
+      summary: 평가 이력 배치 삭제(DONE→숨김 soft / FAILED→완전삭제 hard / 진행중→skip)
+      description: 'org 격리. all=true 면 현재 필터+숨김 제외 범위. 감사 불변식: 상품 삭제의 DONE-job 판정은 hidden 무관.'
+      operationId: batchDeleteJobs
+      x-roles: [VALUATOR, ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                job_ids: { type: array, items: { type: integer } }
+                all: { type: boolean }
+                instrument_type: { $ref: '#/components/schemas/InstrumentType' }
+                status: { $ref: '#/components/schemas/JobStatus' }
+      responses:
+        '200':
+          description: 삭제 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hidden_count, deleted_count, skipped]
+                properties:
+                  hidden_count: { type: integer }
+                  deleted_count: { type: integer }
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      properties: { job_id: { type: integer }, reason: { type: string } }
+
+  /jobs/{job_id}/report:
+    post:
+      tags: [Reports]
+      summary: 평가보고서 발급(PDF+엑셀 생성·저장). DONE·계산근거 필요, 구버전 409. 재발급=새 레코드.
+      operationId: issueReport
+      x-roles: [VALUATOR, ORG_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PathJobId'
+      responses:
+        '201':
+          description: 발급 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report_id, report_no]
+                properties: { report_id: { type: integer }, report_no: { type: string } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: DONE 아님 또는 계산근거 없음(구버전)
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  /reports:
+    get:
+      tags: [Reports]
+      summary: 발급 이력(org 격리, blob 제외 메타)
+      operationId: listReports
+      x-roles: [all]
+      responses:
+        '200':
+          description: 발급 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        report_id: { type: integer }
+                        report_no: { type: string }
+                        job_id: { type: integer }
+                        instrument_id: { type: integer }
+                        instrument_name: { type: [string, 'null'] }
+                        instrument_type: { type: [string, 'null'] }
+                        valuation_date: { type: [string, 'null'] }
+                        issued_at: { type: [string, 'null'] }
+
+  /reports/{id}/pdf:
+    get:
+      tags: [Reports]
+      summary: 보고서 PDF 다운로드(org 격리, Content-Disposition)
+      operationId: downloadReportPdf
+      x-roles: [all]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: PDF
+          content: { application/pdf: { schema: { type: string, format: binary } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /reports/{id}/excel:
+    get:
+      tags: [Reports]
+      summary: 보고서 엑셀(계산근거 raw) 다운로드(org 격리)
+      operationId: downloadReportExcel
+      x-roles: [all]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: XLSX
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /jobs/{job_id}/audit-data:
     get:
       tags: [Pricing]

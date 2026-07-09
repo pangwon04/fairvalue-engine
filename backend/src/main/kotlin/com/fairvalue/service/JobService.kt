@@ -76,8 +76,10 @@ class JobService(
         job = jobRepo.save(job)
 
         return try {
-            val result = engine.price(ctx, instrument, job.id!!)
-            job.resultJson = mapper.writeValueAsString(result)
+            // ★5-8fix(수정 A): 엔진 응답 원문(raw) 그대로 저장 — trees·curve_bootstrap·sensitivity 등 옵션 키 보존.
+            //   result(타입 DTO)는 검증/파생용. 저장은 raw.
+            val outcome = engine.price(ctx, instrument, job.id!!)
+            job.resultJson = mapper.writeValueAsString(outcome.raw)
             job.status = JobStatus.DONE
             job.completedAt = OffsetDateTime.now()
             jobRepo.save(job)

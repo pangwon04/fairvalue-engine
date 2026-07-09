@@ -1,14 +1,13 @@
 package com.fairvalue.pricing
 
 import com.fairvalue.domain.InstrumentEntity
-import com.fairvalue.dto.PricingResult
 
 /**
- * ResolvedContext → PricingResult.
+ * ResolvedContext → PricingOutcome(원문 raw + 타입 result).
  *
- * Phase 3 교체 지점: FastApiPricingEngineClient 가 pricing-engine(FastAPI /price)을 호출해
- * 실제 계산 결과를 받는다. 호출부(JobService)는 이 인터페이스에만 의존.
+ * ★5-8fix: 반환을 PricingOutcome 으로 변경 — 저장은 raw 원문(옵션 키 보존), 검증/total 은 result.
+ * 호출부(JobService)는 이 인터페이스에만 의존.
  */
 interface PricingEngineClient {
-    fun price(context: ResolvedContext, instrument: InstrumentEntity, jobId: Long): PricingResult
+    fun price(context: ResolvedContext, instrument: InstrumentEntity, jobId: Long): PricingOutcome
 }

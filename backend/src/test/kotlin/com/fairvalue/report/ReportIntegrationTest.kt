@@ -58,20 +58,14 @@ class ReportIntegrationTest {
     }
 
     @Test
-    fun `구버전(트리 없음) 발급 차단·목록 org 격리`() {
+    fun `보고서 목록·다운로드 org 격리·미존재 404`() {
+        // (발급 SUCCESS·다운로드 e2e 는 PricingJobIntegrationTest 에서 dummy 트리 보존으로 검증)
         val token = signup(uniq("ORG"))
-        // Dummy 엔진 결과에는 trees/curve_bootstrap 이 없음 → 발급 차단(409)
-        val inst = post("/instruments", mapOf("type" to "CB", "name" to "CB1", "issuer" to "발행"), token)
-        val instId = mapper.readTree(inst.body()).get("id").asLong()
-        // terms 저장(간이) 후 price → DONE(dummy)
-        // terms 최소 저장은 별도 파이프라인이라 여기선 job 없이 목록·격리만 검증
-        assertEquals(0, mapper.readTree(get("/reports", token).body()).get("items").size())
-
-        // 존재하지 않는/타 조직 보고서 다운로드 404
+        assertEquals(0, mapper.readTree(get("/reports", token).body()).get("items").size(), "발급 전 목록 빔")
+        // 미존재 보고서 다운로드 404
         assertEquals(404, get("/reports/999999/pdf", token).statusCode())
         assertEquals(404, get("/reports/999999/excel", token).statusCode())
-
-        // 타 조직이 이 조직 job 에 발급 시도 → 404(job 미노출)
+        // 타 조직이 미노출 job 에 발급 시도 → 404
         val other = signup(uniq("ORG2"))
         assertEquals(404, post("/jobs/999999/report", emptyMap<String, Any>(), other).statusCode())
     }

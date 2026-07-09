@@ -3,6 +3,7 @@ package com.fairvalue.pricing
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -266,6 +267,65 @@ class PricingJobIntegrationTest {
         assertEquals(0, rB.get("hidden_count").asInt() + rB.get("deleted_count").asInt())
         // 본인 조직에서 여전히 노출(숨김 안 됨)
         assertEquals(200, get("/jobs/$jobId/result", token).statusCode())
+    }
+
+    @Test
+    fun `5-8fix passthrough — result_json 에 옵션 키(trees·curve_bootstrap·sensitivity) 보존`() {
+        val token = adminToken(uniq("ORG"))
+        val inst = cbWithTerms(token)
+        val jobId = mapper.readTree(post("/instruments/$inst/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
+        val result = mapper.readTree(get("/jobs/$jobId/result", token).body())
+        // ★원문 보존: DTO 재직렬화로 소실되던 옵션 키가 GET result 에 노출
+        assertTrue(result.has("trees"), "trees 보존")
+        assertTrue(result.path("trees").path("tree_meta").has("rate_mode"), "tree_meta.rate_mode 보존")
+        assertTrue(result.has("curve_bootstrap"), "curve_bootstrap 보존")
+        assertTrue(result.has("sensitivity"), "sensitivity 보존")
+        // 기존 12키·total 불변(회귀)
+        assertTrue(result.path("components").has("total_fair_value"))
+        assertEquals("DONE", result.get("status").asText())
+    }
+
+    @Test
+    fun `5-8fix input_hash 주입 — context·result 실해시·재현성`() {
+        val token = adminToken(uniq("ORG"))
+        val inst = cbWithTerms(token)
+        val jobId = mapper.readTree(post("/instruments/$inst/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
+
+        // (b) V6 contextJson 스냅샷에 실 해시(0×64 아님)
+        val ctx = mapper.readTree(get("/jobs/$jobId/context", token).body()).get("context")
+        val ctxHash = ctx.get("input_hash").asText()
+        assertNotEquals("0".repeat(64), ctxHash, "contextJson input_hash 실값 주입")
+        // (c) result echo == context hash
+        val result = mapper.readTree(get("/jobs/$jobId/result", token).body())
+        assertEquals(ctxHash, result.path("reproducibility").path("input_hash").asText(), "엔진 echo == 주입 해시")
+
+        // 재현성: 동일 terms 의 별도 상품 → 동일 해시(결정성)
+        val inst2 = cbWithTerms(token)
+        val job2 = mapper.readTree(post("/instruments/$inst2/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
+        val ctx2Hash = mapper.readTree(get("/jobs/$job2/context", token).body()).get("context").get("input_hash").asText()
+        assertEquals(ctxHash, ctx2Hash, "동일 입력 → 동일 input_hash(재현성)")
+    }
+
+    @Test
+    fun `5-8fix 보고서 발급 SUCCESS — 트리 보존으로 발급·다운로드·타org 404`() {
+        val token = adminToken(uniq("ORG"))
+        val inst = cbWithTerms(token)
+        val jobId = mapper.readTree(post("/instruments/$inst/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
+        // 원문 보존 덕에 trees·curve_bootstrap 존재 → 발급 성공(구버전 차단 아님)
+        val issue = post("/jobs/$jobId/report", emptyMap<String, Any>(), token)
+        assertEquals(201, issue.statusCode(), issue.body())
+        val reportId = mapper.readTree(issue.body()).get("report_id").asLong()
+        assertTrue(mapper.readTree(get("/reports", token).body()).get("items").size() >= 1)
+        // PDF 다운로드(바이트) 200 + %PDF
+        val pdf = client.send(b("/reports/$reportId/pdf", token).GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+        assertEquals(200, pdf.statusCode())
+        assertTrue(pdf.body().size > 1000 && pdf.body()[0] == '%'.code.toByte(), "PDF 바이트·%PDF")
+        val xlsx = client.send(b("/reports/$reportId/excel", token).GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+        assertEquals(200, xlsx.statusCode())
+        assertTrue(xlsx.body().size > 1000 && xlsx.body()[0] == 'P'.code.toByte(), "XLSX 바이트·PK")
+        // ★타 org 보고서 다운로드 404
+        val other = adminToken(uniq("ORG2"))
+        assertEquals(404, get("/reports/$reportId/pdf", other).statusCode())
     }
 
     @Test

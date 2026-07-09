@@ -57,6 +57,9 @@ class RealPricingEngineClientTest {
                    "volatility":50.0,"credit_spread":18.5,"parity":8000.0,"lattice_steps":300},
                  "reproducibility":{"input_hash":"$ih","seed":20240101,"model_version":"cb-1.0.0",
                    "computed_at":"2022-10-13T00:00:00Z"},
+                 "trees":{"underlying_tree":[[3260.0]],"tree_meta":{"steps_used":1,"rate_mode":"BOOTSTRAPPED_FORWARD","model":"TF"}},
+                 "curve_bootstrap":{"rate_mode":"BOOTSTRAPPED_FORWARD"},
+                 "sensitivity":{"vol_axis":[0.5]},
                  "warnings":[],"errors":[]}
             """.trimIndent().toByteArray(Charsets.UTF_8)
             ex.sendResponseHeaders(200, resp.size.toLong())
@@ -65,7 +68,8 @@ class RealPricingEngineClientTest {
         server.start()
         try {
             val client = RealPricingEngineClient(mapper, "http://localhost:${server.address.port}")
-            val r = client.price(ctx("hash_abc_64hex"), instrument(), jobId = 99)
+            val out = client.price(ctx("hash_abc_64hex"), instrument(), jobId = 99)
+            val r = out.result   // 타입 DTO(검증·total)
 
             assertEquals(99, r.jobId, "job_id 권위값")
             assertEquals(42, r.instrumentId, "instrument_id 권위값")
@@ -77,6 +81,14 @@ class RealPricingEngineClientTest {
             assertEquals("hash_abc_64hex", r.reproducibility.inputHash, "input_hash echo 정합")
             assertEquals(50.0, r.keyParameters.volatility)   // 채워짐(placeholder null 아님)
             assertTrue(r.warnings.isEmpty(), "PLACEHOLDER 없음")
+
+            // ★수정 A: 원문 보존 — 옵션 키(trees·curve_bootstrap·sensitivity)가 raw 에 살아있다.
+            assertEquals(99, out.raw.get("job_id").asInt(), "raw 식별자 권위값")
+            assertTrue(out.raw.has("trees"), "raw 에 trees 보존")
+            assertEquals("BOOTSTRAPPED_FORWARD", out.raw.path("trees").path("tree_meta").path("rate_mode").asText(), "rate_mode 보존")
+            assertTrue(out.raw.has("curve_bootstrap") && out.raw.has("sensitivity"), "curve_bootstrap·sensitivity 보존")
+            // echo 일치 → W301 경고 없음
+            assertEquals(0, out.raw.path("warnings").size(), "echo 일치 시 경고 없음")
         } finally {
             server.stop(0)
         }
