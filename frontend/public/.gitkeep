@@ -1,0 +1,1 @@
+# Next standalone 런타임이 public/ 을 COPY 하므로 빈 디렉터리라도 존재해야 한다.

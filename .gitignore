@@ -4,3 +4,6 @@ fv_engine_project/
 build/
 build/
 *.log
+
+# 배포 시크릿 (Phase 6-1) — .env 는 커밋 금지. .env.example 만 커밋한다.
+.env

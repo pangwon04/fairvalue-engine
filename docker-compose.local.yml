@@ -1,0 +1,27 @@
+# =============================================================================
+# FairValue — 로컬 리허설 override (Phase 6-1)
+# -----------------------------------------------------------------------------
+# 로컬에서는 Caddy 자체서명 HTTPS 인증서가 브라우저의 API fetch 를 차단하므로,
+# 포트를 직접 노출하고 HTTP 로 연결한다(리허설 전용).
+#   사용:  docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#   접속:  http://localhost:3000  (프론트)   ·   http://localhost:8080/health  (API)
+#   ★ 서버 배포에는 이 파일을 쓰지 않는다(기본 docker-compose.yml + Caddy).
+# =============================================================================
+services:
+  backend:
+    environment:
+      FRONTEND_ORIGIN: http://localhost:3000
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+        NEXT_PUBLIC_DEMO_BANNER: ${NEXT_PUBLIC_DEMO_BANNER:-true}
+    ports:
+      - "3000:3000"
+
+  # 로컬에서는 Caddy 미기동(비활성 프로필로 제외).
+  caddy:
+    profiles: ["disabled"]

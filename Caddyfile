@@ -1,0 +1,23 @@
+# =============================================================================
+# FairValue Engine — Caddy 리버스 프록시 (Phase 6-1)
+# -----------------------------------------------------------------------------
+# 공개 지점은 여기 하나(80/443). Caddy 가 Let's Encrypt 인증서를 자동 발급/갱신.
+#   {$DOMAIN}      → 프론트(frontend:3000)
+#   api.{$DOMAIN}  → 백엔드(backend:8080)
+#
+# ★ DOMAIN 은 .env 에서 주입. 당분간 sslip.io 사용(무료·IP 기반):
+#     서버 IP 가 1.2.3.4 이면 DOMAIN=1-2-3-4.sslip.io
+#     → 프론트 https://1-2-3-4.sslip.io , API https://api.1-2-3-4.sslip.io
+#     (sslip.io 는 api.1-2-3-4.sslip.io 도 1.2.3.4 로 해석하므로 A레코드 불요)
+#   실도메인 구매 시: .env 의 DOMAIN 만 교체 + DNS A레코드(루트·api) 2개 + 재시작.
+# =============================================================================
+
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy frontend:3000
+}
+
+api.{$DOMAIN} {
+	encode gzip
+	reverse_proxy backend:8080
+}

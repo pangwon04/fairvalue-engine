@@ -1,0 +1,34 @@
+# =============================================================================
+# FairValue Backend — prod 프로필 (Phase 6-1 배포)
+# -----------------------------------------------------------------------------
+# ★ 코드/스키마 불변. 운영용 설정 차이만.
+# ★ datasource·JWT_SECRET·엔진URL 은 공통 application.yml 이 이미 env(${...}) 로 읽는다.
+#     여기서는 prod 전용 차이(FRONTEND_ORIGIN CORS, 문서 UI off, 로그 축소)만 둔다.
+# ★ 로컬 프로필(application-local.yml)은 건드리지 않는다.
+#   활성화: SPRING_PROFILES_ACTIVE=prod (docker-compose 에서 주입)
+# 필수 env(compose 주입): DB_URL, DB_USER, DB_PASSWORD, JWT_SECRET, ENGINE_BASE_URL, FRONTEND_ORIGIN
+# =============================================================================
+
+spring:
+  jpa:
+    show-sql: false
+  flyway:
+    enabled: true
+
+# 운영에서는 API 문서 UI 비공개.
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
+
+# CORS 허용 오리진 = 프론트 공개 주소(env). SecurityConfig 가 app.cors.allowed-origins 를 읽는다.
+app:
+  cors:
+    allowed-origins: ${FRONTEND_ORIGIN}
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: warn
+    org.flywaydb: info

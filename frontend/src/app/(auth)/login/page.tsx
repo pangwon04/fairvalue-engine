@@ -42,6 +42,11 @@ export default function LoginPage() {
           <p className="mt-4 text-center text-sm text-slate-500">
             계정이 없나요? <Link href="/signup" className="font-medium text-navy-700 hover:underline">회원가입</Link>
           </p>
+          {/* ★ 데모 계정 안내 자리(배포 시 값 기입). 회원가입으로 새 조직 생성도 가능. */}
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs text-slate-500">
+            데모 체험용 계정: <span className="font-medium text-slate-600">추후 안내 예정</span>
+            <br />또는 회원가입으로 새 조직을 만들어 바로 사용할 수 있습니다.
+          </div>
         </CardBody>
       </Card>
     </div>

@@ -1,0 +1,114 @@
+# =============================================================================
+# FairValue Engine — 배포 오케스트레이션 (Phase 6-1)
+# -----------------------------------------------------------------------------
+# 5 서비스: postgres · engine · backend · frontend · caddy
+#   ★ 외부 공개는 caddy(80/443) 하나뿐. postgres·engine·backend·frontend 는 포트 미공개.
+#   ★ engine 은 무인증 → 절대 외부 노출 금지(내부 네트워크 전용).
+#   ★ 내부 통신은 서비스명 DNS: 백엔드→engine:8000, 백엔드→postgres:5432, caddy→frontend:3000/backend:8080.
+#   값은 .env 에서 주입(.env.example 참고). 로컬 리허설/서버 동일 파일.
+#
+# 실행:  docker compose up -d --build
+# 종료:  docker compose down       (데이터 유지)  /  down -v (데이터 삭제)
+# =============================================================================
+name: fairvalue
+
+services:
+  # ---- PostgreSQL (미공개) --------------------------------------------------
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ---- Pricing Engine (무인증 → 미공개!) ------------------------------------
+  engine:
+    build:
+      context: ./pricing-engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # ★ ports 없음 — 내부 네트워크 전용. 절대 publish 금지.
+
+  # ---- Backend (Kotlin/Spring, 미공개) --------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP_MINUTES: ${JWT_EXP_MINUTES:-120}
+      ENGINE_BASE_URL: http://engine:8000
+      ENGINE_MODE: ${ENGINE_MODE:-real}
+      FRONTEND_ORIGIN: https://${DOMAIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    # ★ ports 없음 — caddy(api.${DOMAIN}) 를 통해서만 접근.
+
+  # ---- Frontend (Next standalone, 미공개) -----------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # ★ Next 특성: 빌드 시점 인라인. DOMAIN 변경 시 --build 필수.
+        NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN}
+        NEXT_PUBLIC_DEMO_BANNER: ${NEXT_PUBLIC_DEMO_BANNER:-true}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    # ★ ports 없음 — caddy(${DOMAIN}) 를 통해서만 접근.
+
+  # ---- Caddy (유일한 공개 지점: 80/443, 자동 HTTPS) -------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
