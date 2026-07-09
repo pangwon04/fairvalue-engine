@@ -288,7 +288,20 @@ class PricingJobIntegrationTest {
     @Test
     fun `5-8fix input_hash 주입 — context·result 실해시·재현성`() {
         val token = adminToken(uniq("ORG"))
-        val inst = cbWithTerms(token)
+        // ★재현성은 '동일 입력'이어야 성립. curve_version 이 해시 대상(InputHash)이므로
+        //   커브를 한 번만 업로드하고 두 상품이 같은 스냅샷(같은 version)을 참조하게 한다.
+        //   (cbWithTerms 는 매번 새 업로드→version 증가→스냅샷 상이 → '동일 입력'이 아님)
+        val rf = uploadCurve(token, "RISK_FREE")
+        val cr = uploadCurve(token, "CREDIT")
+        fun cbSharedCurves(): Long {
+            val id = createInstrument(token, "CB")
+            val terms = validCb().toMutableMap()
+            terms["curves"] = mapOf("risk_free_ref" to rf, "credit_ref" to cr)
+            assertEquals(200, put("/instruments/$id/terms", terms, token).statusCode())
+            return id
+        }
+
+        val inst = cbSharedCurves()
         val jobId = mapper.readTree(post("/instruments/$inst/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
 
         // (b) V6 contextJson 스냅샷에 실 해시(0×64 아님)
@@ -299,8 +312,8 @@ class PricingJobIntegrationTest {
         val result = mapper.readTree(get("/jobs/$jobId/result", token).body())
         assertEquals(ctxHash, result.path("reproducibility").path("input_hash").asText(), "엔진 echo == 주입 해시")
 
-        // 재현성: 동일 terms 의 별도 상품 → 동일 해시(결정성)
-        val inst2 = cbWithTerms(token)
+        // (재현성) 동일 커브 스냅샷·동일 terms 별도 상품 → 동일 해시(결정성)
+        val inst2 = cbSharedCurves()
         val job2 = mapper.readTree(post("/instruments/$inst2/price", emptyMap<String, Any>(), token).body()).get("job_id").asLong()
         val ctx2Hash = mapper.readTree(get("/jobs/$job2/context", token).body()).get("context").get("input_hash").asText()
         assertEquals(ctxHash, ctx2Hash, "동일 입력 → 동일 input_hash(재현성)")
