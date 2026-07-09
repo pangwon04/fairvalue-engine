@@ -23,6 +23,9 @@ interface YieldCurveUploadRepository :
 
     fun findByIdAndOrgId(id: Long, orgId: Long): YieldCurveUpload?
 
+    /** ★5-10 대시보드: 조직의 등록 커브 수. */
+    fun countByOrgId(orgId: Long): Long
+
     /** (org,kind,grade,as_of) 의 최대 version. grade NULL 은 IS NULL 로 정확 매칭. 없으면 0. */
     @Query(
         """

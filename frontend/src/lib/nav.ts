@@ -8,7 +8,7 @@ export interface NavItem {
 }
 
 export const NAV: NavItem[] = [
-  { label: "대시보드", href: "/dashboard", active: false },
+  { label: "대시보드", href: "/dashboard", active: true },
   { label: "상품 평가", href: "/instruments", active: true },
   {
     label: "파라미터 관리", href: "/parameters", active: true,

@@ -24,7 +24,7 @@ export default function SignupPage() {
     try {
       const r = await signup(email, pw, orgCode);
       setAuth(r.token, r.user);
-      router.replace("/instruments");
+      router.replace("/dashboard");
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "회원가입 실패");
     } finally { setBusy(false); }

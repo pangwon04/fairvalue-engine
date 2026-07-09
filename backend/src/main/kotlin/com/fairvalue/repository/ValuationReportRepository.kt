@@ -23,4 +23,8 @@ interface ValuationReportRepository : JpaRepository<ValuationReport, Long> {
         """,
     )
     fun findMetaByOrgId(@Param("orgId") orgId: Long): List<ReportMetaDto>
+
+    /** ★5-10 대시보드: 보고서가 발급된 job_id 집합(중복 제거). recent_jobs 의 report_issued 를 일괄 판정(N+1 금지). */
+    @Query("SELECT DISTINCT r.jobId FROM ValuationReport r WHERE r.orgId = :orgId")
+    fun findDistinctJobIdsByOrgId(@Param("orgId") orgId: Long): List<Long>
 }

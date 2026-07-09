@@ -23,7 +23,7 @@ export default function LoginPage() {
     try {
       const r = await login(email, pw);
       setAuth(r.token, r.user);
-      router.replace("/instruments");
+      router.replace("/dashboard");
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "로그인 실패");
     } finally { setBusy(false); }

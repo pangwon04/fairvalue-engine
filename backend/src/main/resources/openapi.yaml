@@ -394,6 +394,59 @@ paths:
                 properties:
                   request_id: { type: integer }
 
+  /curves/{id}:
+    delete:
+      tags: [Curve]
+      summary: 커브 삭제(hard)
+      description: >-
+        커브 헤더와 만기점을 완전 삭제한다(숨김 계층 없음). 과거 평가는 resolve 시점 커브 포인트를
+        contextJson 스냅샷(V6)으로 보존하므로 재현성·계산근거·보고서는 훼손되지 않는다. jobs→curves FK 없음.
+      operationId: deleteCurve
+      x-roles: [CURVE_MANAGER, ORG_ADMIN]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '204': { description: 삭제됨 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Volatility
+  /volatilities/{id}:
+    delete:
+      tags: [Volatility]
+      summary: 변동성 삭제(hard)
+      description: >-
+        변동성 레코드를 완전 삭제한다(숨김 계층 없음). 과거 평가는 변동성 값을 폼→context 스냅샷으로
+        복사 저장(volatility_ref 는 FK 아닌 JSON 참조)하므로 재현성은 훼손되지 않는다.
+      operationId: deleteVolatility
+      x-roles: [CURVE_MANAGER, ORG_ADMIN]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '204': { description: 삭제됨 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Dashboard
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: 대시보드 요약(순수 현황)
+      description: >-
+        로그인 후 첫 화면. org 격리 집계 — 계산·설정 기능 없음(읽기 전용).
+        jobs.done/failed·recent_jobs 는 숨김(hidden_at) job 제외.
+      operationId: getDashboardSummary
+      x-roles: [all]
+      responses:
+        '200':
+          description: 요약
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   # ---------------------------------------------------------------- Asset
   /assets:
     get:
@@ -924,6 +977,60 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+
+    # ---- 대시보드(5-10) ----
+    DashboardSummary:
+      type: object
+      description: 대시보드 요약(순수 현황 집계). org 격리, 숨김 job 제외.
+      required: [instruments, jobs, reports, parameters, by_type, recent_jobs]
+      properties:
+        instruments:
+          type: object
+          required: [active, archived]
+          properties:
+            active: { type: integer, format: int64, description: 비ARCHIVED }
+            archived: { type: integer, format: int64 }
+        jobs:
+          type: object
+          required: [done, failed]
+          properties:
+            done: { type: integer, format: int64, description: 숨김 제외 DONE }
+            failed: { type: integer, format: int64, description: 숨김 제외 FAILED }
+        reports:
+          type: object
+          required: [count]
+          properties:
+            count: { type: integer, format: int64 }
+        parameters:
+          type: object
+          required: [curves, volatilities]
+          properties:
+            curves: { type: integer, format: int64 }
+            volatilities: { type: integer, format: int64 }
+        by_type:
+          type: array
+          description: 상품 유형별 현황(활성 기준).
+          items:
+            type: object
+            required: [type, count]
+            properties:
+              type: { type: string }
+              count: { type: integer, format: int64 }
+        recent_jobs:
+          type: array
+          description: 최근 평가 8건(숨김 제외, 최신순).
+          items:
+            type: object
+            required: [job_id, status, report_issued]
+            properties:
+              job_id: { type: integer, format: int64 }
+              instrument_name: { type: [string, 'null'] }
+              type: { type: [string, 'null'] }
+              valuation_date: { type: [string, 'null'] }
+              model: { type: [string, 'null'] }
+              total_fair_value: { type: [number, 'null'] }
+              status: { type: string }
+              report_issued: { type: boolean, description: valuation_reports 에 job_id 존재 }
 
     # ---- 공통 에러/이슈 ----
     Error:

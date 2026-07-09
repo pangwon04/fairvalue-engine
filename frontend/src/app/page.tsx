@@ -4,6 +4,6 @@ import { useRouter } from "next/navigation";
 import { isAuthed } from "@/lib/auth";
 export default function Home() {
   const router = useRouter();
-  useEffect(() => { router.replace(isAuthed() ? "/instruments" : "/login"); }, [router]);
+  useEffect(() => { router.replace(isAuthed() ? "/dashboard" : "/login"); }, [router]);
   return null;
 }

@@ -12,4 +12,7 @@ interface VolatilityDataRepository :
     JpaSpecificationExecutor<VolatilityData> {
 
     fun findByIdAndOrgId(id: Long, orgId: Long): VolatilityData?
+
+    /** ★5-10 대시보드: 조직의 등록 변동성 수. */
+    fun countByOrgId(orgId: Long): Long
 }
