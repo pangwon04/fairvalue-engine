@@ -116,6 +116,23 @@ class CurveService(
         )
     }
 
+    /**
+     * ★5-10: 커브 hard delete(숨김 불요). 헤더+자식 만기점 완전 삭제.
+     *   감사-안전: 과거 평가는 resolve 시점 커브 포인트를 contextJson 스냅샷(V6)으로 보존 →
+     *   마스터 삭제가 재현성·계산근거·보고서를 훼손하지 않음. jobs→curves FK 없음.
+     *   권한 CURVE_MANAGER/ORG_ADMIN(쓰기와 동일), org 격리(타 조직 404).
+     */
+    @Transactional
+    fun delete(caller: AuthPrincipal, id: Long) {
+        if (caller.role !in WRITE_ROLES) {
+            throw ForbiddenException("커브 삭제 권한이 없습니다(CURVE_MANAGER 또는 ORG_ADMIN).")
+        }
+        val u = uploadRepo.findByIdAndOrgId(id, caller.orgId)
+            ?: throw NotFoundException("커브를 찾을 수 없습니다.")
+        pointRepo.deleteByUploadId(u.id!!)   // 자식 만기점 명시 삭제(FK CASCADE 와 별개로 결정성)
+        uploadRepo.delete(u)                  // 헤더 삭제
+    }
+
     /** CSV(템플릿) → 만기점 목록. 상단 #메타·헤더 줄은 건너뛴다. */
     fun parsePointsCsv(text: String): List<Pair<BigDecimal?, BigDecimal?>> {
         val out = mutableListOf<Pair<BigDecimal?, BigDecimal?>>()

@@ -135,6 +135,19 @@ class VolatilityService(
         return repo.findAll(spec, sort).map { VolatilityDto.from(it) }
     }
 
+    /**
+     * ★5-10: 변동성 hard delete(숨김 불요). 감사-안전: 과거 평가는 변동성 값을 폼→context 스냅샷으로
+     *   복사 저장(volatility_ref 는 FK 아닌 JSON 참조) → 마스터 삭제가 과거 재현성을 훼손하지 않음.
+     *   권한 CURVE_MANAGER/ORG_ADMIN, org 격리(타 조직 404).
+     */
+    @Transactional
+    fun delete(caller: AuthPrincipal, id: Long) {
+        requireWrite(caller)
+        val v = repo.findByIdAndOrgId(id, caller.orgId)
+            ?: throw NotFoundException("변동성 레코드를 찾을 수 없습니다.")
+        repo.delete(v)
+    }
+
     @Transactional(readOnly = true)
     fun getDetail(caller: AuthPrincipal, id: Long): VolatilityDetailDto {
         val v = repo.findByIdAndOrgId(id, caller.orgId)

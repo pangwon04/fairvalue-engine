@@ -30,3 +30,5 @@ export const getCurveDetail = (id: number) => api.get<CurveDetail>(`/curves/${id
 export const uploadCurveJson = (body: CurveUploadBody) => api.post<CurveUploadResult>("/curves", body);
 export const uploadCurveCsv = (form: FormData) => api.postForm<CurveUploadResult>("/curves", form);
 export const parseKofia = (form: FormData) => api.postForm<KofiaParseResponse>("/curves/parse-kofia", form);
+// ★5-10: 커브 hard delete(과거 평가는 스냅샷 보존 → 무영향). 204.
+export const deleteCurve = (id: number) => api.del<void>(`/curves/${id}`);

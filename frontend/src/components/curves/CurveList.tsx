@@ -1,14 +1,16 @@
 "use client";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listCurves, getCurveDetail, type CurveKind } from "@/lib/api/curves";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { listCurves, getCurveDetail, deleteCurve, type CurveKind } from "@/lib/api/curves";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { Select } from "@/components/ui/Select";
+import { DeleteParameterButton } from "@/components/parameters/DeleteParameterButton";
 import { CurveChart } from "./CurveChart";
 
 export function CurveList({ refreshKey }: { refreshKey: number }) {
+  const qc = useQueryClient();
   const [kind, setKind] = useState<CurveKind | "">("");
   const [openId, setOpenId] = useState<number | null>(null);
   const list = useQuery({
@@ -51,9 +53,18 @@ export function CurveList({ refreshKey }: { refreshKey: number }) {
                   <td className="tnum">{c.as_of}</td>
                   <td className="text-slate-500">{c.source ?? "—"}</td>
                   <td className="text-right">
-                    <button className="text-navy-700 hover:underline" onClick={() => setOpenId(openId === c.id ? null : c.id)}>
-                      {openId === c.id ? "닫기" : "상세"}
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button className="text-navy-700 hover:underline" onClick={() => setOpenId(openId === c.id ? null : c.id)}>
+                        {openId === c.id ? "닫기" : "상세"}
+                      </button>
+                      <DeleteParameterButton
+                        kind="커브"
+                        label={`#${c.id} · ${c.kind}${c.grade ? ` ${c.grade}` : ""} · ${c.as_of}`}
+                        consequence="다른 커브로 폴백되거나 resolve 실패 가능"
+                        onDelete={() => deleteCurve(c.id)}
+                        onDeleted={() => { if (openId === c.id) setOpenId(null); qc.invalidateQueries({ queryKey: ["curves"] }); }}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -74,3 +74,6 @@ export const listVolatilities = (asOf?: string, label?: string) => {
 /** 단건(detail 포함). */
 export const getVolatilityDetail = (id: number) =>
   api.get<VolatilityDetail>(`/volatilities/${id}`);
+
+/** ★5-10: 변동성 hard delete(과거 평가는 스냅샷 보존 → 무영향). 204. */
+export const deleteVolatility = (id: number) => api.del<void>(`/volatilities/${id}`);

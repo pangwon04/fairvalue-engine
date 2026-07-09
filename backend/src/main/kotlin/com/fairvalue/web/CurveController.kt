@@ -15,6 +15,7 @@ import com.fairvalue.service.KofiaExcelParser
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -93,6 +94,14 @@ class CurveController(
         @AuthenticationPrincipal caller: AuthPrincipal,
         @PathVariable id: Long,
     ): CurveDetailDto = curveService.getDetail(caller, id)
+
+    // --- 삭제(hard). 5-10. 권한 서비스 강제, org 격리. 204. ---
+    @DeleteMapping("/curves/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(
+        @AuthenticationPrincipal caller: AuthPrincipal,
+        @PathVariable id: Long,
+    ) = curveService.delete(caller, id)
 
     @PostMapping("/curves/permission-request")
     @ResponseStatus(HttpStatus.CREATED)

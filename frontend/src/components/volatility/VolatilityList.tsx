@@ -1,14 +1,16 @@
 "use client";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listVolatilities, getVolatilityDetail, type CompanyVol } from "@/lib/api/volatilities";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { listVolatilities, getVolatilityDetail, deleteVolatility, type CompanyVol } from "@/lib/api/volatilities";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
+import { DeleteParameterButton } from "@/components/parameters/DeleteParameterButton";
 
 const pct = (n: unknown) => (typeof n === "number" ? n.toLocaleString("ko-KR", { maximumFractionDigits: 4 }) : "—");
 
 export function VolatilityList({ refreshKey }: { refreshKey: number }) {
+  const qc = useQueryClient();
   const [openId, setOpenId] = useState<number | null>(null);
   const { data, isLoading, isError } = useQuery({
     queryKey: ["volatilities", refreshKey],
@@ -26,7 +28,7 @@ export function VolatilityList({ refreshKey }: { refreshKey: number }) {
           <table className="w-full text-sm">
             <thead><tr className="border-b border-slate-200 text-left text-slate-500">
               <th className="py-2 font-medium">기준일</th><th className="font-medium">대상</th>
-              <th className="text-right font-medium">채택변동성%</th><th className="font-medium">방법</th><th className="font-medium">거래일수</th>
+              <th className="text-right font-medium">채택변동성%</th><th className="font-medium">방법</th><th className="font-medium">거래일수</th><th></th>
             </tr></thead>
             <tbody>
               {data.items.map((v) => (
@@ -36,6 +38,15 @@ export function VolatilityList({ refreshKey }: { refreshKey: number }) {
                   <td className="text-right tnum">{pct(v.annual_vol_percent)}</td>
                   <td><Badge tone={v.method === "PEER_CSV" ? "navy" : "gray"}>{v.method}</Badge></td>
                   <td className="tnum">{v.trading_days_used}</td>
+                  <td className="text-right">
+                    <DeleteParameterButton
+                      kind="변동성"
+                      label={`#${v.id} · ${v.label} · ${v.as_of}`}
+                      consequence="기본 변동성 입력으로 대체되거나 resolve 실패 가능"
+                      onDelete={() => deleteVolatility(v.id)}
+                      onDeleted={() => { if (openId === v.id) setOpenId(null); qc.invalidateQueries({ queryKey: ["volatilities"] }); }}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
