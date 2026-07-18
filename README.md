@@ -14,7 +14,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
-> 🔗 데모: {{https://comfinvalue.site}} · 데모 계정: {{}}
+> 🔗 데모: {{https://comfinvalue.site}} · 데모 계정: {{test1234@test.com/test1234}}
 데모 체험은 회원가입 이후 진행하시면 됩니다.
 
 ## 배경
